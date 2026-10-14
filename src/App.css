@@ -1122,21 +1122,6 @@
   text-align: left;
 }
 
-.login-notice-banner {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  background: rgba(236, 28, 36, 0.12);
-  border: 1px solid rgba(236, 28, 36, 0.35);
-  color: #ff6b70;
-  padding: 8px 14px;
-  border-radius: 8px;
-  font-size: 0.85rem;
-  font-weight: 500;
-  margin-top: 0.75rem;
-}
-
 .upload-login-btn {
   margin-top: 1.25rem;
   background: #EC1C24;

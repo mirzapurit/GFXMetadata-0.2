@@ -825,7 +825,7 @@ const App = () => {
   const handleFiles = async (rawFiles) => {
     if (!rawFiles || rawFiles.length === 0) return;
     if (!isLoggedIn) {
-      setLoginError('মেটাডাটা তৈরি করতে অনুগ্রহ করে প্রথমে লগইন করুন। (Please sign in to upload media and generate metadata)');
+      setLoginError('Please sign in to upload media and generate metadata.');
       setShowLoginModal(true);
       return;
     }
@@ -1064,7 +1064,7 @@ const App = () => {
 
   const generateSingle = async (imgId) => {
     if (!isLoggedIn) {
-      setLoginError('লগইন ছাড়া মেটাডাটা তৈরি করা যাবে না। অনুগ্রহ করে প্রথমে লগইন করুন। (Please sign in to generate metadata)');
+      setLoginError('Please sign in to generate metadata.');
       setShowLoginModal(true);
       return;
     }
@@ -1214,7 +1214,7 @@ const App = () => {
 
   const generateAll = async () => {
     if (!isLoggedIn) {
-      setLoginError('লগইন ছাড়া মেটাডাটা তৈরি করা যাবে না। অনুগ্রহ করে প্রথমে লগইন করুন। (Please sign in to generate metadata)');
+      setLoginError('Please sign in to generate metadata.');
       setShowLoginModal(true);
       return;
     }
@@ -1473,10 +1473,6 @@ const App = () => {
               <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '-0.5rem' }}>
                 Sign in with Google or Email
               </p>
-              <div className="login-notice-banner">
-                <Lock size={15} />
-                <span>লগইন ছাড়া মেটাডাটা তৈরি করা যাবে না</span>
-              </div>
             </div>
 
             <div className="google-login-wrapper">
@@ -1924,7 +1920,7 @@ const App = () => {
             )}
             <button 
                 onClick={!isLoggedIn ? () => {
-                  setLoginError('লগইন ছাড়া মেটাডাটা তৈরি করা যাবে না। অনুগ্রহ করে প্রথমে লগইন করুন। (Please sign in to generate metadata)');
+                  setLoginError('Please sign in to generate metadata.');
                   setShowLoginModal(true);
                 } : generateAll} 
                 disabled={isGenerating || (isLoggedIn && images.length === 0)}
@@ -1994,7 +1990,7 @@ const App = () => {
             </h2>
             <p style={{ marginTop: '0.5rem', color: 'var(--text-secondary)' }}>
               {!isLoggedIn 
-                ? 'মেটাডাটা তৈরি করতে গুগল বা ইমেইল দিয়ে লগইন করুন (Please sign in to generate metadata)' 
+                ? 'Please sign in with Google or Email to generate metadata' 
                 : 'Supports JPG, PNG, WEBP, .EPS vectors, and MP4/MOV/WEBM video footage'}
             </p>
             {!isLoggedIn && (
