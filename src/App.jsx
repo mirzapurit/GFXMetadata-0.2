@@ -499,22 +499,40 @@ const App = () => {
   };
 
   const REQUIRE_LOGIN = false;
-  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [user, setUser] = useState(() => {
+    const saved = localStorage.getItem('miti_user');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.email && parsed.email !== 'guest@gfxmetadata.com') {
+          return parsed;
+        }
+      } catch {}
+    }
+    return null;
+  });
+
+  const isLoggedIn = !!user && user.email !== 'guest@gfxmetadata.com';
+
+  const [showLoginModal, setShowLoginModal] = useState(() => {
+    const saved = localStorage.getItem('miti_user');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.email && parsed.email !== 'guest@gfxmetadata.com') {
+          return false;
+        }
+      } catch {}
+    }
+    return true;
+  });
+
   const [showAdminLoginModal, setShowAdminLoginModal] = useState(false);
   const [adminAuthEmail, setAdminAuthEmail] = useState('');
   const [adminAuthPassword, setAdminAuthPassword] = useState('');
   const [adminAuthError, setAdminAuthError] = useState('');
 
   const [showAdminPanel, setShowAdminPanel] = useState(false);
-  const [user, setUser] = useState(() => {
-    const saved = localStorage.getItem('miti_user');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch {}
-    }
-    return DEFAULT_PREVIEW_USER;
-  });
 
   const [isAdmin, setIsAdmin] = useState(() => {
     const saved = localStorage.getItem('miti_user');
@@ -691,11 +709,11 @@ const App = () => {
   const handleLogout = () => {
     setIsAdmin(false);
     localStorage.removeItem('gfx_admin_auth');
-    setUser(DEFAULT_PREVIEW_USER);
+    setUser(null);
     localStorage.removeItem('miti_user');
     setShowAdminPanel(false);
     setShowAdminLoginModal(false);
-    setShowLoginModal(false);
+    setShowLoginModal(true);
     resetSettingsToDefault();
   };
 
@@ -806,6 +824,11 @@ const App = () => {
 
   const handleFiles = async (rawFiles) => {
     if (!rawFiles || rawFiles.length === 0) return;
+    if (!isLoggedIn) {
+      setLoginError('মেটাডাটা তৈরি করতে অনুগ্রহ করে প্রথমে লগইন করুন। (Please sign in to upload media and generate metadata)');
+      setShowLoginModal(true);
+      return;
+    }
     const files = Array.from(rawFiles);
     
     const videoFiles = [];
@@ -1040,6 +1063,12 @@ const App = () => {
   };
 
   const generateSingle = async (imgId) => {
+    if (!isLoggedIn) {
+      setLoginError('লগইন ছাড়া মেটাডাটা তৈরি করা যাবে না। অনুগ্রহ করে প্রথমে লগইন করুন। (Please sign in to generate metadata)');
+      setShowLoginModal(true);
+      return;
+    }
+
     const currentKeys = apiKeys[activeProvider];
     if (!currentKeys || currentKeys.length === 0) {
       setShowModal(true);
@@ -1184,6 +1213,12 @@ const App = () => {
   };
 
   const generateAll = async () => {
+    if (!isLoggedIn) {
+      setLoginError('লগইন ছাড়া মেটাডাটা তৈরি করা যাবে না। অনুগ্রহ করে প্রথমে লগইন করুন। (Please sign in to generate metadata)');
+      setShowLoginModal(true);
+      return;
+    }
+
     const currentKeys = apiKeys[activeProvider];
     if (!currentKeys || currentKeys.length === 0) {
       setShowModal(true);
@@ -1438,6 +1473,10 @@ const App = () => {
               <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '-0.5rem' }}>
                 Sign in with Google or Email
               </p>
+              <div className="login-notice-banner">
+                <Lock size={15} />
+                <span>লগইন ছাড়া মেটাডাটা তৈরি করা যাবে না</span>
+              </div>
             </div>
 
             <div className="google-login-wrapper">
@@ -1835,7 +1874,7 @@ const App = () => {
               </button>
             )}
 
-            {(!user || user.email === 'guest@gfxmetadata.com') ? (
+            {!isLoggedIn ? (
               <button 
                 className="header-google-login-btn"
                 onClick={() => setShowLoginModal(true)}
@@ -1884,13 +1923,30 @@ const App = () => {
               </button>
             )}
             <button 
-                onClick={generateAll} 
-                disabled={isGenerating || images.length === 0}
+                onClick={!isLoggedIn ? () => {
+                  setLoginError('লগইন ছাড়া মেটাডাটা তৈরি করা যাবে না। অনুগ্রহ করে প্রথমে লগইন করুন। (Please sign in to generate metadata)');
+                  setShowLoginModal(true);
+                } : generateAll} 
+                disabled={isGenerating || (isLoggedIn && images.length === 0)}
                 className={isGenerating ? 'generating-pulse' : ''}
-                style={{ background: '#EC1C24' }}
+                style={{ 
+                  background: !isLoggedIn ? '#26282b' : '#EC1C24',
+                  border: !isLoggedIn ? '1px solid rgba(236, 28, 36, 0.45)' : 'none',
+                  color: !isLoggedIn ? '#ff6b70' : '#ffffff'
+                }}
             >
-              {isGenerating ? <Loader2 className="animate-spin" size={18} /> : <Play size={18} />}
-              {isGenerating ? `Generating (${stats.completed}/${stats.total})` : (activeMode === 'metadata' ? 'Generate Metadata' : 'Generate Prompts')}
+              {isGenerating ? (
+                <Loader2 className="animate-spin" size={18} />
+              ) : !isLoggedIn ? (
+                <Lock size={18} color="#EC1C24" />
+              ) : (
+                <Play size={18} />
+              )}
+              {isGenerating 
+                ? `Generating (${stats.completed}/${stats.total})` 
+                : !isLoggedIn 
+                  ? 'Login to Generate' 
+                  : (activeMode === 'metadata' ? 'Generate Metadata' : 'Generate Prompts')}
             </button>
             <button 
                 className="secondary" 
@@ -1931,12 +1987,29 @@ const App = () => {
           >
             <input type="file" multiple accept="image/*,.eps,application/postscript,video/*,.mp4,.mov,.webm,.m4v" onChange={handleFileUpload} style={{ display: 'none' }} />
             <div style={{ background: 'rgba(236, 28, 36, 0.1)', padding: '2rem', borderRadius: '50%', marginBottom: '1rem' }}>
-              <Upload size={48} color="#EC1C24" />
+              {!isLoggedIn ? <Lock size={48} color="#EC1C24" /> : <Upload size={48} color="#EC1C24" />}
             </div>
-            <h2 style={{ fontSize: '1.5rem', fontWeight: '700', color: '#fff' }}>Drop images, .EPS vectors, or videos here</h2>
+            <h2 style={{ fontSize: '1.5rem', fontWeight: '700', color: '#fff' }}>
+              {!isLoggedIn ? 'Login Required to Generate Metadata' : 'Drop images, .EPS vectors, or videos here'}
+            </h2>
             <p style={{ marginTop: '0.5rem', color: 'var(--text-secondary)' }}>
-              Supports JPG, PNG, WEBP, .EPS vectors, and MP4/MOV/WEBM video footage
+              {!isLoggedIn 
+                ? 'মেটাডাটা তৈরি করতে গুগল বা ইমেইল দিয়ে লগইন করুন (Please sign in to generate metadata)' 
+                : 'Supports JPG, PNG, WEBP, .EPS vectors, and MP4/MOV/WEBM video footage'}
             </p>
+            {!isLoggedIn && (
+              <button 
+                type="button"
+                className="upload-login-btn"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setShowLoginModal(true);
+                }}
+              >
+                <Lock size={16} /> Sign In to Get Started
+              </button>
+            )}
           </label>
         ) : (
           <div className="image-grid">
