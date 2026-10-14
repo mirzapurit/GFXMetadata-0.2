@@ -188,12 +188,12 @@ const AdminPanel = ({ isOpen, onClose, currentUser, onAdminLogout }) => {
     showToast(`User ${newUserEmail} registered successfully!`);
   };
 
-  // Reset sample test data
-  const handleResetSampleData = () => {
-    if (window.confirm('Reset statistics to default baseline test data?')) {
-      statsTracker.resetDefaultData();
+  // Reset / purge stats to clean 0 counters
+  const handleResetRealData = () => {
+    if (window.confirm('Clear all stored statistics and reset counters to clean live data (0 images, 0 batches)?')) {
+      statsTracker.resetToCleanRealData();
       refreshData();
-      showToast('Statistics reset to default sample data.');
+      showToast('All statistics reset to clean 0 counters.');
     }
   };
 
@@ -222,6 +222,14 @@ const AdminPanel = ({ isOpen, onClose, currentUser, onAdminLogout }) => {
           </div>
 
           <div className="admin-header-actions">
+            <button className="admin-btn-secondary" onClick={() => {
+              statsTracker.cleanupMockData();
+              refreshData();
+              showToast('Mock data purged. Real live data synced.');
+            }} title="Purge Dummy Data & Sync Live">
+              <Sparkles size={15} color="#EC1C24" />
+              <span>Sync Live Data</span>
+            </button>
             <button className="admin-btn-secondary" onClick={refreshData} title="Refresh Live Data">
               <RefreshCw size={15} />
               <span>Refresh</span>
@@ -324,11 +332,11 @@ const AdminPanel = ({ isOpen, onClose, currentUser, onAdminLogout }) => {
                   <div className="metric-value-row">
                     <span className="metric-number">{stats.totalImagesProcessed.toLocaleString()}</span>
                     <span className="metric-trend positive">
-                      <TrendingUp size={14} /> +24% this week
+                      <TrendingUp size={14} /> {stats.totalGenerations} Batches
                     </span>
                   </div>
                   <div className="metric-footer-bar">
-                    <div className="metric-bar-fill" style={{ width: '85%', background: '#3B82F6' }}></div>
+                    <div className="metric-bar-fill" style={{ width: stats.totalImagesProcessed > 0 ? '100%' : '0%', background: '#3B82F6' }}></div>
                   </div>
                 </div>
 
@@ -358,8 +366,17 @@ const AdminPanel = ({ isOpen, onClose, currentUser, onAdminLogout }) => {
                     </div>
                   </div>
                   <div className="metric-value-row">
-                    <span className="metric-number">Gemini {stats.geminiPercentage}%</span>
-                    <span className="metric-trend neutral">Groq {stats.groqPercentage}%</span>
+                    {(stats.geminiCount === 0 && stats.groqCount === 0) ? (
+                      <>
+                        <span className="metric-number">0 Calls</span>
+                        <span className="metric-trend neutral">No workload yet</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="metric-number">Gemini {stats.geminiPercentage}%</span>
+                        <span className="metric-trend neutral">Groq {stats.groqPercentage}%</span>
+                      </>
+                    )}
                   </div>
                   <div className="metric-footer-bar" style={{ display: 'flex' }}>
                     <div style={{ width: `${stats.geminiPercentage}%`, height: '100%', background: '#3B82F6', borderRadius: '4px 0 0 4px' }}></div>
@@ -385,9 +402,9 @@ const AdminPanel = ({ isOpen, onClose, currentUser, onAdminLogout }) => {
 
                   <div className="bar-chart-container">
                     {stats.dailyData.map((d, idx) => {
-                      const maxVal = Math.max(...stats.dailyData.map(item => item.count), 100);
-                      const heightPercent = Math.max(12, Math.round((d.count / maxVal) * 100));
-                      const geminiHeight = Math.round((d.gemini / d.count) * 100) || 60;
+                      const maxVal = Math.max(...stats.dailyData.map(item => item.count), 1);
+                      const heightPercent = d.count > 0 ? Math.max(14, Math.round((d.count / maxVal) * 100)) : 5;
+                      const geminiHeight = d.count > 0 ? Math.round((d.gemini / d.count) * 100) : 0;
                       return (
                         <div key={idx} className="chart-bar-col">
                           <div className="bar-tooltip">
@@ -395,7 +412,7 @@ const AdminPanel = ({ isOpen, onClose, currentUser, onAdminLogout }) => {
                             <span>Gemini: {d.gemini}</span>
                             <span>Groq: {d.groq}</span>
                           </div>
-                          <div className="bar-track" style={{ height: `${heightPercent}%` }}>
+                          <div className="bar-track" style={{ height: `${heightPercent}%`, opacity: d.count > 0 ? 1 : 0.25 }}>
                             <div className="bar-segment gemini" style={{ height: `${geminiHeight}%` }}></div>
                             <div className="bar-segment groq" style={{ height: `${100 - geminiHeight}%` }}></div>
                           </div>
@@ -421,7 +438,10 @@ const AdminPanel = ({ isOpen, onClose, currentUser, onAdminLogout }) => {
                     <div className="chart-footer-stat">
                       <span className="footer-stat-label">Peak Volume</span>
                       <span className="footer-stat-val">
-                        {stats.dailyData.reduce((prev, curr) => (curr.count > prev.count ? curr : prev), stats.dailyData[0])?.day} ({stats.dailyData.reduce((prev, curr) => (curr.count > prev.count ? curr : prev), stats.dailyData[0])?.count})
+                        {(() => {
+                          const peak = stats.dailyData.reduce((prev, curr) => (curr.count > prev.count ? curr : prev), stats.dailyData[0]);
+                          return peak && peak.count > 0 ? `${peak.day} (${peak.count})` : '0';
+                        })()}
                       </span>
                     </div>
                   </div>
@@ -437,14 +457,14 @@ const AdminPanel = ({ isOpen, onClose, currentUser, onAdminLogout }) => {
                   </div>
 
                   <div className="leaderboard-list">
-                    {users.slice(0, 5).map((u, i) => (
+                    {[...users].sort((a, b) => (b.totalImages || 0) - (a.totalImages || 0)).slice(0, 5).map((u, i) => (
                       <div key={u.id} className="leaderboard-item">
                         <span className={`rank-badge rank-${i + 1}`}>#{i + 1}</span>
                         <div className="user-avatar-initials">
                           {u.avatar ? (
                             <img src={u.avatar} alt={u.name} />
                           ) : (
-                            <span>{u.name.charAt(0).toUpperCase()}</span>
+                            <span>{u.name ? u.name.charAt(0).toUpperCase() : 'U'}</span>
                           )}
                         </div>
                         <div className="leaderboard-info">
@@ -768,18 +788,23 @@ const AdminPanel = ({ isOpen, onClose, currentUser, onAdminLogout }) => {
                     </div>
                     <div className="eff-item">
                       <span className="eff-label">Average Response Time</span>
-                      <span className="eff-val">1.92s</span>
-                      <span className="eff-sub">Optimized for high-throughput batching</span>
+                      <span className="eff-val">{stats.avgDuration || '0.00s'}</span>
+                      <span className="eff-sub">Real API response latency</span>
                     </div>
                     <div className="eff-item">
-                      <span className="eff-label">Metadata Consistency</span>
-                      <span className="eff-val">99.8%</span>
-                      <span className="eff-sub">Smart punctuation and title limits enforced</span>
+                      <span className="eff-label">API Success Rate</span>
+                      <span className="eff-val">{stats.successRate}%</span>
+                      <span className="eff-sub">Based on live generation logs</span>
+                    </div>
+                    <div className="eff-item">
+                      <span className="eff-label">Total Batches Completed</span>
+                      <span className="eff-val">{stats.totalGenerations} batches</span>
+                      <span className="eff-sub">Tracked in real time</span>
                     </div>
                     <div className="eff-item">
                       <span className="eff-label">CSV Export Deliveries</span>
-                      <span className="eff-val">{stats.totalGenerations} files</span>
-                      <span className="eff-sub">Ready for Adobe Stock, Shutterstock, Freepik</span>
+                      <span className="eff-val">{stats.totalExports || 0} exports</span>
+                      <span className="eff-sub">Downloaded spreadsheet files</span>
                     </div>
                   </div>
                 </div>
@@ -788,13 +813,13 @@ const AdminPanel = ({ isOpen, onClose, currentUser, onAdminLogout }) => {
               {/* Maintenance & Reset Box */}
               <div className="admin-danger-zone">
                 <div>
-                  <h4 style={{ color: '#fff', fontSize: '0.95rem', fontWeight: '600' }}>Baseline Test Data Controls</h4>
+                  <h4 style={{ color: '#fff', fontSize: '0.95rem', fontWeight: '600' }}>Live Telemetry & Data Controls</h4>
                   <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginTop: '2px' }}>
-                    Reset test user records and generation metrics back to clean sample data if needed.
+                    Reset all counters to clean 0 and purge any old cached mock data.
                   </p>
                 </div>
-                <button className="admin-btn-secondary" onClick={handleResetSampleData}>
-                  <RefreshCw size={14} /> Reset Baseline Data
+                <button className="admin-btn-secondary danger" onClick={handleResetRealData}>
+                  <RefreshCw size={14} /> Reset All To 0 & Sync Real
                 </button>
               </div>
             </div>

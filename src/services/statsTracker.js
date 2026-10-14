@@ -1,4 +1,4 @@
-// Persistent Analytics & User Statistics Tracker for GFX Metadata
+// Real-time Persistent Analytics & User Statistics Tracker for GFX Metadata
 
 const STORAGE_KEYS = {
   USERS: 'gfx_admin_users',
@@ -6,7 +6,7 @@ const STORAGE_KEYS = {
   METRICS: 'gfx_admin_metrics'
 };
 
-const DEFAULT_USERS = [
+const INITIAL_ADMIN_USERS = [
   {
     id: 'usr_admin_dipta',
     name: 'Dipta (Super Admin)',
@@ -14,164 +14,83 @@ const DEFAULT_USERS = [
     avatar: null,
     role: 'super_admin',
     status: 'active',
-    totalGenerations: 215,
-    totalImages: 1420,
+    totalGenerations: 0,
+    totalImages: 0,
     favoriteProvider: 'gemini',
     favoriteModel: 'gemini-2.5-flash',
-    joinedAt: '2026-01-15T08:00:00.000Z',
+    joinedAt: new Date().toISOString(),
     lastActive: new Date().toISOString()
   },
   {
-    id: 'usr_admin_1',
-    name: 'Mirzapur IT (Admin)',
+    id: 'usr_admin_mirzapur',
+    name: 'Mirzapur IT',
     email: 'mirzapurit@gmail.com',
     avatar: 'https://lh3.googleusercontent.com/a/default-user',
     role: 'super_admin',
     status: 'active',
-    totalGenerations: 142,
-    totalImages: 864,
+    totalGenerations: 0,
+    totalImages: 0,
     favoriteProvider: 'gemini',
     favoriteModel: 'gemini-2.5-flash',
-    joinedAt: '2026-02-10T08:30:00.000Z',
+    joinedAt: new Date().toISOString(),
     lastActive: new Date().toISOString()
-  },
-  {
-    id: 'usr_2',
-    name: 'Alex Vance',
-    email: 'alex.vance@stockcreators.io',
-    avatar: null,
-    role: 'member',
-    status: 'active',
-    totalGenerations: 45,
-    totalImages: 312,
-    favoriteProvider: 'groq',
-    favoriteModel: 'llama-4-scout-17b',
-    joinedAt: '2026-03-01T12:00:00.000Z',
-    lastActive: new Date(Date.now() - 1000 * 60 * 32).toISOString()
-  },
-  {
-    id: 'usr_3',
-    name: 'Sara Khan',
-    email: 'sara.designer@pixelstudio.net',
-    avatar: null,
-    role: 'member',
-    status: 'active',
-    totalGenerations: 68,
-    totalImages: 490,
-    favoriteProvider: 'gemini',
-    favoriteModel: 'gemini-3.1-flash-lite',
-    joinedAt: '2026-03-12T15:20:00.000Z',
-    lastActive: new Date(Date.now() - 1000 * 60 * 115).toISOString()
-  },
-  {
-    id: 'usr_4',
-    name: 'Karim Ullah',
-    email: 'karim.creative@gmail.com',
-    avatar: null,
-    role: 'member',
-    status: 'idle',
-    totalGenerations: 19,
-    totalImages: 95,
-    favoriteProvider: 'gemini',
-    favoriteModel: 'gemini-2.5-flash',
-    joinedAt: '2026-03-18T09:10:00.000Z',
-    lastActive: new Date(Date.now() - 1000 * 60 * 60 * 18).toISOString()
-  },
-  {
-    id: 'usr_5',
-    name: 'Dev John',
-    email: 'john.vectorlab@gmail.com',
-    avatar: null,
-    role: 'member',
-    status: 'idle',
-    totalGenerations: 12,
-    totalImages: 60,
-    favoriteProvider: 'groq',
-    favoriteModel: 'llama-4-maverick',
-    joinedAt: '2026-03-22T14:45:00.000Z',
-    lastActive: new Date(Date.now() - 1000 * 60 * 60 * 42).toISOString()
-  }
-];
-
-const DEFAULT_LOGS = [
-  {
-    id: 'log_1',
-    timestamp: new Date(Date.now() - 1000 * 60 * 5).toISOString(),
-    userEmail: 'mirzapurit@gmail.com',
-    userName: 'Mirzapur IT',
-    action: 'Metadata Batch Generation',
-    provider: 'gemini',
-    model: 'gemini-2.5-flash',
-    mode: 'metadata',
-    count: 12,
-    status: 'success',
-    duration: '2.1s'
-  },
-  {
-    id: 'log_2',
-    timestamp: new Date(Date.now() - 1000 * 60 * 32).toISOString(),
-    userEmail: 'alex.vance@stockcreators.io',
-    userName: 'Alex Vance',
-    action: 'Prompt Generation',
-    provider: 'groq',
-    model: 'llama-4-scout-17b',
-    mode: 'prompt',
-    count: 5,
-    status: 'success',
-    duration: '1.4s'
-  },
-  {
-    id: 'log_3',
-    timestamp: new Date(Date.now() - 1000 * 60 * 75).toISOString(),
-    userEmail: 'sara.designer@pixelstudio.net',
-    userName: 'Sara Khan',
-    action: 'Metadata Batch Generation',
-    provider: 'gemini',
-    model: 'gemini-3.1-flash-lite',
-    mode: 'metadata',
-    count: 24,
-    status: 'success',
-    duration: '3.8s'
-  },
-  {
-    id: 'log_4',
-    timestamp: new Date(Date.now() - 1000 * 60 * 140).toISOString(),
-    userEmail: 'mirzapurit@gmail.com',
-    userName: 'Mirzapur IT',
-    action: 'CSV Export',
-    provider: 'gemini',
-    model: 'gemini-2.5-flash',
-    mode: 'metadata',
-    count: 24,
-    status: 'success',
-    duration: '0.4s'
-  },
-  {
-    id: 'log_5',
-    timestamp: new Date(Date.now() - 1000 * 60 * 320).toISOString(),
-    userEmail: 'karim.creative@gmail.com',
-    userName: 'Karim Ullah',
-    action: 'Metadata Generation',
-    provider: 'gemini',
-    model: 'gemini-2.5-flash',
-    mode: 'metadata',
-    count: 8,
-    status: 'success',
-    duration: '1.9s'
   }
 ];
 
 class StatsTracker {
   constructor() {
+    this.cleanupMockData();
     this.ensureInitialized();
+  }
+
+  // Automatically purge any previously stored mock/sample users or logs
+  cleanupMockData() {
+    try {
+      const mockEmails = new Set([
+        'alex.vance@stockcreators.io',
+        'sara.designer@pixelstudio.net',
+        'karim.creative@gmail.com',
+        'john.vectorlab@gmail.com',
+        'guest@gfxmetadata.com'
+      ]);
+
+      const rawUsers = localStorage.getItem(STORAGE_KEYS.USERS);
+      if (rawUsers) {
+        const parsed = JSON.parse(rawUsers);
+        const realUsers = parsed.filter(u => !mockEmails.has((u.email || '').toLowerCase()));
+        
+        // Reset old hardcoded sample numbers (1420 / 864) on admin accounts
+        realUsers.forEach(u => {
+          if (u.totalImages === 1420 || u.totalImages === 864) {
+            u.totalImages = 0;
+            u.totalGenerations = 0;
+          }
+        });
+
+        if (realUsers.length === 0) {
+          localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(INITIAL_ADMIN_USERS));
+        } else {
+          localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(realUsers));
+        }
+      }
+
+      const rawLogs = localStorage.getItem(STORAGE_KEYS.LOGS);
+      if (rawLogs) {
+        const parsedLogs = JSON.parse(rawLogs);
+        const realLogs = parsedLogs.filter(l => !mockEmails.has((l.userEmail || '').toLowerCase()));
+        localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify(realLogs));
+      }
+    } catch (e) {
+      console.warn('Error during mock data cleanup:', e);
+    }
   }
 
   ensureInitialized() {
     if (!localStorage.getItem(STORAGE_KEYS.USERS)) {
-      localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(DEFAULT_USERS));
+      localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(INITIAL_ADMIN_USERS));
     }
     if (!localStorage.getItem(STORAGE_KEYS.LOGS)) {
-      localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify(DEFAULT_LOGS));
+      localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify([]));
     }
   }
 
@@ -179,9 +98,9 @@ class StatsTracker {
     try {
       this.ensureInitialized();
       const raw = localStorage.getItem(STORAGE_KEYS.USERS);
-      return raw ? JSON.parse(raw) : DEFAULT_USERS;
+      return raw ? JSON.parse(raw) : INITIAL_ADMIN_USERS;
     } catch {
-      return DEFAULT_USERS;
+      return INITIAL_ADMIN_USERS;
     }
   }
 
@@ -193,15 +112,15 @@ class StatsTracker {
     try {
       this.ensureInitialized();
       const raw = localStorage.getItem(STORAGE_KEYS.LOGS);
-      return raw ? JSON.parse(raw) : DEFAULT_LOGS;
+      return raw ? JSON.parse(raw) : [];
     } catch {
-      return DEFAULT_LOGS;
+      return [];
     }
   }
 
   saveLogs(logs) {
-    // Keep max 200 logs
-    const trimmed = logs.slice(0, 200);
+    // Keep max 300 logs
+    const trimmed = logs.slice(0, 300);
     localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify(trimmed));
   }
 
@@ -209,9 +128,13 @@ class StatsTracker {
   recordLogin(user) {
     if (!user || !user.email) return;
     try {
+      const email = user.email.toLowerCase();
+      // Skip dummy guest account
+      if (email === 'guest@gfxmetadata.com') return;
+
       const users = this.getUsers();
-      const existingIdx = users.findIndex(u => u.email.toLowerCase() === user.email.toLowerCase());
-      const isOwner = user.email.toLowerCase() === 'diptag22@gmail.com' || user.email.toLowerCase() === 'mirzapurit@gmail.com' || user.email.toLowerCase().includes('admin');
+      const existingIdx = users.findIndex(u => u.email.toLowerCase() === email);
+      const isOwner = email === 'diptag22@gmail.com' || email === 'mirzapurit@gmail.com';
 
       if (existingIdx >= 0) {
         users[existingIdx].lastActive = new Date().toISOString();
@@ -225,7 +148,7 @@ class StatsTracker {
           name: user.name || user.email.split('@')[0],
           email: user.email,
           avatar: user.avatar || null,
-          role: isOwner ? 'super_admin' : 'member',
+          role: isOwner ? 'super_admin' : (user.role || 'member'),
           status: 'active',
           totalGenerations: 0,
           totalImages: 0,
@@ -247,17 +170,18 @@ class StatsTracker {
         mode: 'auth',
         count: 1,
         status: 'success',
-        duration: '0.2s'
+        duration: '0.1s'
       });
     } catch (e) {
       console.error('Failed to record user login stats:', e);
     }
   }
 
-  // Record image generation action
+  // Record image generation action in real-time
   recordGeneration({ user, provider, model, mode, count = 1, success = true, duration = '1.8s' }) {
     try {
       const email = user?.email || 'mirzapurit@gmail.com';
+      if (email === 'guest@gfxmetadata.com') return;
       const name = user?.name || (email.split('@')[0]);
 
       // Update user aggregate stats
@@ -268,17 +192,18 @@ class StatsTracker {
         users[userIdx].totalGenerations = (users[userIdx].totalGenerations || 0) + 1;
         users[userIdx].totalImages = (users[userIdx].totalImages || 0) + count;
         users[userIdx].lastActive = new Date().toISOString();
-        users[userIdx].favoriteProvider = provider || users[userIdx].favoriteProvider;
+        users[userIdx].status = 'active';
+        if (provider) users[userIdx].favoriteProvider = provider;
         if (model) users[userIdx].favoriteModel = model;
         this.saveUsers(users);
       } else {
-        // If user wasn't registered yet
+        const isOwner = email.toLowerCase() === 'diptag22@gmail.com' || email.toLowerCase() === 'mirzapurit@gmail.com';
         users.unshift({
           id: `usr_${Date.now()}`,
           name,
           email,
           avatar: user?.avatar || null,
-          role: email.toLowerCase() === 'mirzapurit@gmail.com' ? 'super_admin' : 'member',
+          role: isOwner ? 'super_admin' : 'member',
           status: 'active',
           totalGenerations: 1,
           totalImages: count,
@@ -295,9 +220,9 @@ class StatsTracker {
         userEmail: email,
         userName: name,
         action: mode === 'prompt' ? 'Prompt Generation' : 'Metadata Generation',
-        provider,
-        model: model ? model.split('/').pop() : provider,
-        mode,
+        provider: provider || 'gemini',
+        model: model ? model.split('/').pop() : (provider || 'gemini'),
+        mode: mode || 'metadata',
         count,
         status: success ? 'success' : 'failed',
         duration
@@ -320,7 +245,7 @@ class StatsTracker {
       mode: 'export',
       count,
       status: 'success',
-      duration: '0.3s'
+      duration: '0.2s'
     });
   }
 
@@ -339,13 +264,14 @@ class StatsTracker {
     }
   }
 
-  // Calculate aggregated stats
+  // Calculate REAL aggregated live stats (no mock baselines)
   getAggregatedStats() {
     const users = this.getUsers();
     const logs = this.getLogs();
 
     const totalUsers = users.length;
     const activeUsersToday = users.filter(u => {
+      if (!u.lastActive) return false;
       const last = new Date(u.lastActive);
       const diffHours = (Date.now() - last.getTime()) / (1000 * 60 * 60);
       return diffHours <= 24;
@@ -358,20 +284,20 @@ class StatsTracker {
     const successLogs = generationLogs.filter(l => l.status === 'success');
     const successRate = generationLogs.length > 0 
       ? Math.round((successLogs.length / generationLogs.length) * 100) 
-      : 99;
+      : 100;
 
     let geminiCount = 0;
     let groqCount = 0;
-    logs.forEach(l => {
+    generationLogs.forEach(l => {
       if (l.provider === 'gemini') geminiCount += (l.count || 1);
       if (l.provider === 'groq') groqCount += (l.count || 1);
     });
 
-    const totalCalls = geminiCount + groqCount || 1;
-    const geminiPercentage = Math.round((geminiCount / totalCalls) * 100);
-    const groqPercentage = 100 - geminiPercentage;
+    const totalCalls = geminiCount + groqCount;
+    const geminiPercentage = totalCalls > 0 ? Math.round((geminiCount / totalCalls) * 100) : 0;
+    const groqPercentage = totalCalls > 0 ? (100 - geminiPercentage) : 0;
 
-    // Last 7 days breakdown
+    // Real last 7 days breakdown based ONLY on actual logs
     const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const now = new Date();
     const dailyData = [];
@@ -382,19 +308,35 @@ class StatsTracker {
       const dayName = days[targetDate.getDay()];
       const dateStr = targetDate.toISOString().slice(0, 10);
 
-      const dayLogs = logs.filter(l => l.timestamp.startsWith(dateStr));
-      const count = dayLogs.reduce((sum, l) => sum + (l.count || 1), 0);
+      const dayLogs = generationLogs.filter(l => l.timestamp && l.timestamp.startsWith(dateStr));
+      let dayGemini = 0;
+      let dayGroq = 0;
+      dayLogs.forEach(l => {
+        if (l.provider === 'gemini') dayGemini += (l.count || 1);
+        if (l.provider === 'groq') dayGroq += (l.count || 1);
+      });
+      const dayTotal = dayGemini + dayGroq;
 
-      // Distribute a minimum realistic baseline for past week
-      const mockBaseline = [28, 42, 65, 54, 89, 74, 98][6 - i];
       dailyData.push({
         day: dayName,
         date: dateStr,
-        count: Math.max(count, mockBaseline),
-        gemini: Math.round(Math.max(count, mockBaseline) * 0.65),
-        groq: Math.round(Math.max(count, mockBaseline) * 0.35)
+        count: dayTotal,
+        gemini: dayGemini,
+        groq: dayGroq
       });
     }
+
+    // Real average response time
+    const durations = generationLogs
+      .map(l => parseFloat(l.duration))
+      .filter(d => !isNaN(d) && d > 0);
+    const avgDuration = durations.length > 0 
+      ? (durations.reduce((a, b) => a + b, 0) / durations.length).toFixed(2) + 's' 
+      : '0.00s';
+
+    // Real CSV exports
+    const exportLogs = logs.filter(l => l.action && l.action.toLowerCase().includes('csv'));
+    const totalExports = exportLogs.length;
 
     return {
       totalUsers,
@@ -406,7 +348,9 @@ class StatsTracker {
       groqCount,
       geminiPercentage,
       groqPercentage,
-      dailyData
+      dailyData,
+      avgDuration,
+      totalExports
     };
   }
 
@@ -426,10 +370,10 @@ class StatsTracker {
     return updated;
   }
 
-  // Reset to default sample stats
-  resetDefaultData() {
-    localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(DEFAULT_USERS));
-    localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify(DEFAULT_LOGS));
+  // Reset & Purge mock data, keeping clean admins
+  resetToCleanRealData() {
+    localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(INITIAL_ADMIN_USERS));
+    localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify([]));
   }
 }
 
