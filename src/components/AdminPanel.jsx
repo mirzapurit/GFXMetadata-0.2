@@ -43,6 +43,10 @@ const AdminPanel = ({ isOpen, onClose, currentUser, onAdminLogout }) => {
   const [newUserName, setNewUserName] = useState('');
   const [newUserEmail, setNewUserEmail] = useState('');
 
+  const [showDbModal, setShowDbModal] = useState(false);
+  const [dbUrlInput, setDbUrlInput] = useState(() => statsTracker.getFirebaseDbUrl());
+  const [isCloudConnected, setIsCloudConnected] = useState(statsTracker.lastCloudSyncSuccess);
+
   // Load latest data from statsTracker
   const refreshData = () => {
     const loadedUsers = statsTracker.getUsers();
@@ -54,9 +58,34 @@ const AdminPanel = ({ isOpen, onClose, currentUser, onAdminLogout }) => {
   };
 
   useEffect(() => {
-    if (isOpen) {
+    if (!isOpen) return;
+
+    refreshData();
+    
+    // Initial fetch from cloud database
+    statsTracker.fetchCloudData().then(res => {
+      setIsCloudConnected(res.success);
       refreshData();
-    }
+    }).catch(() => setIsCloudConnected(false));
+
+    // Listen for local/broadcast changes across tabs
+    const unsubscribe = statsTracker.subscribe(() => {
+      refreshData();
+      setIsCloudConnected(statsTracker.lastCloudSyncSuccess);
+    });
+
+    // Continual 3-second live polling to sync all users worldwide in real time
+    const pollTimer = setInterval(() => {
+      statsTracker.fetchCloudData().then(res => {
+        setIsCloudConnected(res.success);
+        refreshData();
+      }).catch(() => setIsCloudConnected(false));
+    }, 3000);
+
+    return () => {
+      unsubscribe();
+      clearInterval(pollTimer);
+    };
   }, [isOpen]);
 
   const showToast = (msg) => {
@@ -211,8 +240,8 @@ const AdminPanel = ({ isOpen, onClose, currentUser, onAdminLogout }) => {
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <h2>Admin Panel & User Statistics</h2>
-                <span className="live-status-pill">
-                  <span className="live-dot"></span> Live
+                <span className={`live-status-pill ${isCloudConnected ? '' : 'offline'}`}>
+                  <span className="live-dot"></span> {isCloudConnected ? 'Cloud Realtime' : 'Local / Offline'}
                 </span>
               </div>
               <p className="admin-subtitle">
@@ -222,15 +251,27 @@ const AdminPanel = ({ isOpen, onClose, currentUser, onAdminLogout }) => {
           </div>
 
           <div className="admin-header-actions">
+            <button className="admin-btn-secondary" onClick={() => setShowDbModal(true)} title="Configure Realtime Firebase Cloud Database URL">
+              <Database size={15} color="#EC1C24" />
+              <span>Database URL</span>
+            </button>
             <button className="admin-btn-secondary" onClick={() => {
               statsTracker.cleanupMockData();
-              refreshData();
-              showToast('Mock data purged. Real live data synced.');
+              statsTracker.fetchCloudData().then(res => {
+                setIsCloudConnected(res.success);
+                refreshData();
+                showToast('Synced with cloud realtime database.');
+              });
             }} title="Purge Dummy Data & Sync Live">
               <Sparkles size={15} color="#EC1C24" />
               <span>Sync Live Data</span>
             </button>
-            <button className="admin-btn-secondary" onClick={refreshData} title="Refresh Live Data">
+            <button className="admin-btn-secondary" onClick={() => {
+              statsTracker.fetchCloudData().then(res => {
+                setIsCloudConnected(res.success);
+                refreshData();
+              });
+            }} title="Refresh Live Data">
               <RefreshCw size={15} />
               <span>Refresh</span>
             </button>
@@ -860,6 +901,54 @@ const AdminPanel = ({ isOpen, onClose, currentUser, onAdminLogout }) => {
                   </button>
                   <button type="submit" className="admin-btn-accent">
                     Save User
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+        {/* Modal: Configure Realtime Database URL */}
+        {showDbModal && (
+          <div className="sub-modal-overlay" onClick={() => setShowDbModal(false)}>
+            <div className="sub-modal-card" onClick={e => e.stopPropagation()}>
+              <div className="sub-modal-header">
+                <h3>Firebase Realtime Database URL</h3>
+                <X size={18} style={{ cursor: 'pointer' }} onClick={() => setShowDbModal(false)} />
+              </div>
+              <form onSubmit={(e) => {
+                e.preventDefault();
+                statsTracker.setFirebaseDbUrl(dbUrlInput);
+                showToast('Connecting to Firebase Realtime Database...');
+                statsTracker.fetchCloudData().then(res => {
+                  setIsCloudConnected(res.success);
+                  refreshData();
+                  if (res.success) {
+                    showToast('Successfully connected to Realtime Database!');
+                  } else {
+                    showToast('Could not reach database URL. Please check Firebase rules or URL.');
+                  }
+                });
+                setShowDbModal(false);
+              }} className="sub-modal-form">
+                <div className="sub-form-group">
+                  <label>Database URL</label>
+                  <input 
+                    type="url" 
+                    placeholder="https://your-project-default-rtdb.firebaseio.com" 
+                    required 
+                    value={dbUrlInput}
+                    onChange={e => setDbUrlInput(e.target.value)}
+                  />
+                  <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '6px' }}>
+                    Google Firebase Realtime Database URL. When connected, all users' activities and metadata counts sync continually across all devices in real time.
+                  </p>
+                </div>
+                <div className="sub-modal-actions">
+                  <button type="button" className="admin-btn-secondary" onClick={() => setShowDbModal(false)}>
+                    Cancel
+                  </button>
+                  <button type="submit" className="admin-btn-accent">
+                    Save & Sync
                   </button>
                 </div>
               </form>

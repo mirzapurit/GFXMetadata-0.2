@@ -1,10 +1,12 @@
-// Real-time Persistent Analytics & User Statistics Tracker for GFX Metadata
+// Real-time Cloud & Local Persistent Analytics Tracker for GFX Metadata
 
 const STORAGE_KEYS = {
   USERS: 'gfx_admin_users',
   LOGS: 'gfx_admin_logs',
-  METRICS: 'gfx_admin_metrics'
+  FIREBASE_URL: 'gfx_firebase_db_url'
 };
+
+const DEFAULT_FIREBASE_URL = 'https://gfx-metadata-default-rtdb.firebaseio.com';
 
 const INITIAL_ADMIN_USERS = [
   {
@@ -39,11 +41,72 @@ const INITIAL_ADMIN_USERS = [
 
 class StatsTracker {
   constructor() {
+    this.listeners = new Set();
+    this.broadcastChannel = null;
+    this.lastCloudSyncSuccess = false;
+    this.initBroadcastChannel();
     this.cleanupMockData();
     this.ensureInitialized();
+    // Background cloud fetch on startup
+    this.fetchCloudData().catch(() => {});
   }
 
-  // Automatically purge any previously stored mock/sample users or logs
+  initBroadcastChannel() {
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      try {
+        this.broadcastChannel = new BroadcastChannel('gfx_telemetry_stream');
+        this.broadcastChannel.onmessage = (event) => {
+          if (event.data && event.data.type === 'SYNC') {
+            this.notifyListeners();
+          }
+        };
+      } catch (e) {
+        console.warn('BroadcastChannel not supported:', e);
+      }
+    }
+  }
+
+  broadcastUpdate() {
+    if (this.broadcastChannel) {
+      try {
+        this.broadcastChannel.postMessage({ type: 'SYNC', timestamp: Date.now() });
+      } catch {}
+    }
+    this.notifyListeners();
+  }
+
+  subscribe(listener) {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  notifyListeners() {
+    this.listeners.forEach(cb => {
+      try { cb(); } catch {}
+    });
+  }
+
+  getFirebaseDbUrl() {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.FIREBASE_URL);
+      if (saved && saved.trim()) return saved.trim().replace(/\/+$/, '');
+      if (import.meta.env.VITE_FIREBASE_DB_URL) return import.meta.env.VITE_FIREBASE_DB_URL.trim().replace(/\/+$/, '');
+    } catch {}
+    return DEFAULT_FIREBASE_URL;
+  }
+
+  setFirebaseDbUrl(url) {
+    const clean = (url || '').trim().replace(/\/+$/, '');
+    localStorage.setItem(STORAGE_KEYS.FIREBASE_URL, clean);
+    this.fetchCloudData().catch(() => {});
+    this.broadcastUpdate();
+  }
+
+  encodeKey(key) {
+    return (key || 'user').toLowerCase().replace(/\./g, '_').replace(/[@#$%[\]/]/g, '_');
+  }
+
+  // Purge any previously stored mock users
   cleanupMockData() {
     try {
       const mockEmails = new Set([
@@ -59,7 +122,6 @@ class StatsTracker {
         const parsed = JSON.parse(rawUsers);
         const realUsers = parsed.filter(u => !mockEmails.has((u.email || '').toLowerCase()));
         
-        // Reset old hardcoded sample numbers (1420 / 864) on admin accounts
         realUsers.forEach(u => {
           if (u.totalImages === 1420 || u.totalImages === 864) {
             u.totalImages = 0;
@@ -119,22 +181,125 @@ class StatsTracker {
   }
 
   saveLogs(logs) {
-    // Keep max 300 logs
     const trimmed = logs.slice(0, 300);
     localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify(trimmed));
   }
 
-  // Register or update active user on login
+  // --- Real-Time Cloud Synchronization Methods ---
+
+  async syncUserToCloud(user) {
+    const baseUrl = this.getFirebaseDbUrl();
+    if (!baseUrl || !user?.email) return;
+    const safeKey = this.encodeKey(user.email);
+    try {
+      await fetch(`${baseUrl}/gfx_users/${safeKey}.json`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(user)
+      });
+      this.lastCloudSyncSuccess = true;
+    } catch (e) {
+      // Cloud sync offline fallback
+      this.lastCloudSyncSuccess = false;
+    }
+  }
+
+  async syncLogToCloud(logEntry) {
+    const baseUrl = this.getFirebaseDbUrl();
+    if (!baseUrl) return;
+    try {
+      await fetch(`${baseUrl}/gfx_logs.json`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(logEntry)
+      });
+      this.lastCloudSyncSuccess = true;
+    } catch (e) {
+      this.lastCloudSyncSuccess = false;
+    }
+  }
+
+  // Pull latest users and logs from Firebase Realtime Database
+  async fetchCloudData() {
+    const baseUrl = this.getFirebaseDbUrl();
+    if (!baseUrl) return { success: false, users: this.getUsers(), logs: this.getLogs() };
+
+    try {
+      const [usersRes, logsRes] = await Promise.all([
+        fetch(`${baseUrl}/gfx_users.json`, { cache: 'no-store' }),
+        fetch(`${baseUrl}/gfx_logs.json?orderBy="$key"&limitToLast=200`, { cache: 'no-store' })
+      ]);
+
+      let cloudUsersList = [];
+      let cloudLogsList = [];
+
+      if (usersRes.ok) {
+        const usersObj = await usersRes.json();
+        if (usersObj && typeof usersObj === 'object') {
+          cloudUsersList = Object.values(usersObj);
+        }
+      }
+
+      if (logsRes.ok) {
+        const logsObj = await logsRes.json();
+        if (logsObj && typeof logsObj === 'object') {
+          cloudLogsList = Object.values(logsObj);
+          // Sort logs newest first
+          cloudLogsList.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+        }
+      }
+
+      if (cloudUsersList.length > 0) {
+        // Merge cloud users with local admins to ensure no admin is missed
+        const localUsers = this.getUsers();
+        const mergedUsersMap = new Map();
+
+        localUsers.forEach(u => mergedUsersMap.set((u.email || '').toLowerCase(), u));
+        cloudUsersList.forEach(u => {
+          if (u && u.email) {
+            mergedUsersMap.set(u.email.toLowerCase(), u);
+          }
+        });
+
+        const mergedUsers = Array.from(mergedUsersMap.values());
+        this.saveUsers(mergedUsers);
+      }
+
+      if (cloudLogsList.length > 0) {
+        this.saveLogs(cloudLogsList);
+      }
+
+      this.lastCloudSyncSuccess = true;
+      this.notifyListeners();
+
+      return {
+        success: true,
+        users: this.getUsers(),
+        logs: this.getLogs()
+      };
+    } catch (e) {
+      this.lastCloudSyncSuccess = false;
+      return {
+        success: false,
+        users: this.getUsers(),
+        logs: this.getLogs()
+      };
+    }
+  }
+
+  // --- Real-time Activity Recording ---
+
   recordLogin(user) {
     if (!user || !user.email) return;
     try {
       const email = user.email.toLowerCase();
-      // Skip dummy guest account
       if (email === 'guest@gfxmetadata.com') return;
 
       const users = this.getUsers();
       const existingIdx = users.findIndex(u => u.email.toLowerCase() === email);
       const isOwner = email === 'diptag22@gmail.com' || email === 'mirzapurit@gmail.com';
+
+      let targetUser;
 
       if (existingIdx >= 0) {
         users[existingIdx].lastActive = new Date().toISOString();
@@ -142,8 +307,9 @@ class StatsTracker {
         if (user.avatar) users[existingIdx].avatar = user.avatar;
         if (user.name) users[existingIdx].name = user.name;
         if (isOwner) users[existingIdx].role = 'super_admin';
+        targetUser = users[existingIdx];
       } else {
-        const newUser = {
+        targetUser = {
           id: `usr_${Date.now()}`,
           name: user.name || user.email.split('@')[0],
           email: user.email,
@@ -157,11 +323,13 @@ class StatsTracker {
           joinedAt: new Date().toISOString(),
           lastActive: new Date().toISOString()
         };
-        users.unshift(newUser);
+        users.unshift(targetUser);
       }
       this.saveUsers(users);
 
-      this.addLog({
+      const logEntry = {
+        id: `log_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        timestamp: new Date().toISOString(),
         userEmail: user.email,
         userName: user.name || user.email.split('@')[0],
         action: 'User Sign In',
@@ -171,22 +339,31 @@ class StatsTracker {
         count: 1,
         status: 'success',
         duration: '0.1s'
-      });
+      };
+
+      const logs = this.getLogs();
+      logs.unshift(logEntry);
+      this.saveLogs(logs);
+
+      // Realtime Cloud Dispatch & Multi-Tab Broadcast
+      this.syncUserToCloud(targetUser);
+      this.syncLogToCloud(logEntry);
+      this.broadcastUpdate();
     } catch (e) {
-      console.error('Failed to record user login stats:', e);
+      console.error('Failed to record user login:', e);
     }
   }
 
-  // Record image generation action in real-time
   recordGeneration({ user, provider, model, mode, count = 1, success = true, duration = '1.8s' }) {
     try {
       const email = user?.email || 'mirzapurit@gmail.com';
       if (email === 'guest@gfxmetadata.com') return;
       const name = user?.name || (email.split('@')[0]);
 
-      // Update user aggregate stats
       const users = this.getUsers();
       const userIdx = users.findIndex(u => u.email.toLowerCase() === email.toLowerCase());
+
+      let targetUser;
 
       if (userIdx >= 0) {
         users[userIdx].totalGenerations = (users[userIdx].totalGenerations || 0) + 1;
@@ -195,10 +372,10 @@ class StatsTracker {
         users[userIdx].status = 'active';
         if (provider) users[userIdx].favoriteProvider = provider;
         if (model) users[userIdx].favoriteModel = model;
-        this.saveUsers(users);
+        targetUser = users[userIdx];
       } else {
         const isOwner = email.toLowerCase() === 'diptag22@gmail.com' || email.toLowerCase() === 'mirzapurit@gmail.com';
-        users.unshift({
+        targetUser = {
           id: `usr_${Date.now()}`,
           name,
           email,
@@ -211,12 +388,14 @@ class StatsTracker {
           favoriteModel: model || 'gemini-2.5-flash',
           joinedAt: new Date().toISOString(),
           lastActive: new Date().toISOString()
-        });
-        this.saveUsers(users);
+        };
+        users.unshift(targetUser);
       }
+      this.saveUsers(users);
 
-      // Add to log
-      this.addLog({
+      const logEntry = {
+        id: `log_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        timestamp: new Date().toISOString(),
         userEmail: email,
         userName: name,
         action: mode === 'prompt' ? 'Prompt Generation' : 'Metadata Generation',
@@ -226,17 +405,28 @@ class StatsTracker {
         count,
         status: success ? 'success' : 'failed',
         duration
-      });
+      };
+
+      const logs = this.getLogs();
+      logs.unshift(logEntry);
+      this.saveLogs(logs);
+
+      // Realtime Cloud Dispatch & Multi-Tab Broadcast
+      this.syncUserToCloud(targetUser);
+      this.syncLogToCloud(logEntry);
+      this.broadcastUpdate();
     } catch (e) {
       console.error('Failed to record generation stats:', e);
     }
   }
 
-  // Record CSV export action
   recordExport(user, count = 0) {
     const email = user?.email || 'mirzapurit@gmail.com';
     const name = user?.name || (email.split('@')[0]);
-    this.addLog({
+
+    const logEntry = {
+      id: `log_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      timestamp: new Date().toISOString(),
       userEmail: email,
       userName: name,
       action: 'CSV Metadata Export',
@@ -246,25 +436,16 @@ class StatsTracker {
       count,
       status: 'success',
       duration: '0.2s'
-    });
+    };
+
+    const logs = this.getLogs();
+    logs.unshift(logEntry);
+    this.saveLogs(logs);
+
+    this.syncLogToCloud(logEntry);
+    this.broadcastUpdate();
   }
 
-  addLog(entry) {
-    try {
-      const logs = this.getLogs();
-      const newEntry = {
-        id: `log_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-        timestamp: new Date().toISOString(),
-        ...entry
-      };
-      logs.unshift(newEntry);
-      this.saveLogs(logs);
-    } catch (e) {
-      console.error('Failed to add log:', e);
-    }
-  }
-
-  // Calculate REAL aggregated live stats (no mock baselines)
   getAggregatedStats() {
     const users = this.getUsers();
     const logs = this.getLogs();
@@ -297,7 +478,7 @@ class StatsTracker {
     const geminiPercentage = totalCalls > 0 ? Math.round((geminiCount / totalCalls) * 100) : 0;
     const groqPercentage = totalCalls > 0 ? (100 - geminiPercentage) : 0;
 
-    // Real last 7 days breakdown based ONLY on actual logs
+    // Real last 7 days breakdown
     const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const now = new Date();
     const dailyData = [];
@@ -326,7 +507,6 @@ class StatsTracker {
       });
     }
 
-    // Real average response time
     const durations = generationLogs
       .map(l => parseFloat(l.duration))
       .filter(d => !isNaN(d) && d > 0);
@@ -334,7 +514,6 @@ class StatsTracker {
       ? (durations.reduce((a, b) => a + b, 0) / durations.length).toFixed(2) + 's' 
       : '0.00s';
 
-    // Real CSV exports
     const exportLogs = logs.filter(l => l.action && l.action.toLowerCase().includes('csv'));
     const totalExports = exportLogs.length;
 
@@ -354,26 +533,42 @@ class StatsTracker {
     };
   }
 
-  // Update a user's role
   updateUserRole(userId, newRole) {
     const users = this.getUsers();
     const updated = users.map(u => u.id === userId ? { ...u, role: newRole } : u);
     this.saveUsers(updated);
+    const target = updated.find(u => u.id === userId);
+    if (target) this.syncUserToCloud(target);
+    this.broadcastUpdate();
     return updated;
   }
 
-  // Delete a user from tracker
   deleteUser(userId) {
     const users = this.getUsers();
+    const target = users.find(u => u.id === userId);
     const updated = users.filter(u => u.id !== userId);
     this.saveUsers(updated);
+    if (target && target.email) {
+      const baseUrl = this.getFirebaseDbUrl();
+      const safeKey = this.encodeKey(target.email);
+      fetch(`${baseUrl}/gfx_users/${safeKey}.json`, { method: 'DELETE' }).catch(() => {});
+    }
+    this.broadcastUpdate();
     return updated;
   }
 
-  // Reset & Purge mock data, keeping clean admins
   resetToCleanRealData() {
     localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(INITIAL_ADMIN_USERS));
     localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify([]));
+    const baseUrl = this.getFirebaseDbUrl();
+    if (baseUrl) {
+      fetch(`${baseUrl}/gfx_users.json`, { method: 'PUT', body: JSON.stringify({
+        usr_admin_dipta: INITIAL_ADMIN_USERS[0],
+        usr_admin_mirzapur: INITIAL_ADMIN_USERS[1]
+      })}).catch(() => {});
+      fetch(`${baseUrl}/gfx_logs.json`, { method: 'DELETE' }).catch(() => {});
+    }
+    this.broadcastUpdate();
   }
 }
 

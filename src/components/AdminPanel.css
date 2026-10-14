@@ -122,6 +122,12 @@
   letter-spacing: 0.04em;
 }
 
+.live-status-pill.offline {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.3);
+  color: #F59E0B;
+}
+
 .live-dot {
   width: 6px;
   height: 6px;
@@ -129,6 +135,11 @@
   background: #10B981;
   box-shadow: 0 0 8px #10B981;
   animation: livePulse 1.8s infinite;
+}
+
+.live-status-pill.offline .live-dot {
+  background: #F59E0B;
+  box-shadow: 0 0 8px #F59E0B;
 }
 
 @keyframes livePulse {
