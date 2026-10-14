@@ -44,20 +44,25 @@ class GeminiService {
   }
 
   async generateMetadata(base64Image, options) {
-    const { titleLen, descLen, keywordCount, isSingleKeyword, isPng, model = "gemini-1.5-flash" } = options;
+    const { titleLen, descLen, keywordCount, isSingleKeyword, isPng, isVideo, videoInfo, model = "gemini-1.5-flash" } = options;
     
     // Strip data prefix if exists
     const base64Data = base64Image.split(',')[1] || base64Image;
     const mimeType = base64Image.split(';')[0].split(':')[1] || 'image/jpeg';
 
-    const prompt = `Analyze this image and provide metadata in JSON format with exactly three keys: "title", "description", and "keywords".
+    const targetType = isVideo ? 'stock footage video clip' : 'image';
+    const videoDetails = isVideo && videoInfo 
+      ? `Video Details: Duration: ${videoInfo.formattedDuration}, Resolution: ${videoInfo.resolutionLabel}.` 
+      : '';
 
+    const prompt = `Analyze this ${targetType} and provide metadata in JSON format with exactly three keys: "title", "description", and "keywords".
+${videoDetails ? `${videoDetails}\n` : ''}
 STRICT MANDATORY REQUIREMENTS:
-1. Title: MUST be exactly ONE SINGLE, grammatically complete sentence or descriptive phrase.
+1. Title: MUST be exactly ONE SINGLE, grammatically complete sentence or descriptive phrase${isVideo ? ' describing the action and subject of the video' : ''}.
    - **CRITICAL**: Do NOT end with a period (".").
    - It MUST be exactly between ${titleLen[0]} and ${titleLen[1]} characters long (including spaces). 
    - NEVER end mid-word or mid-phrase. If it's too long, write a conciser phrase. If too short, add visual details. COUNT YOUR CHARACTERS CAREFULLY.
-2. Keywords: MUST be an array of EXACTLY ${keywordCount[1]} unique descriptive keywords. ${isSingleKeyword ? 'EACH keyword MUST be ONE SINGLE WORD.' : ''}
+2. Keywords: MUST be an array of EXACTLY ${keywordCount[1]} unique descriptive keywords. ${isSingleKeyword ? 'EACH keyword MUST be ONE SINGLE WORD.' : ''}${isVideo ? ' Include relevant video tags (motion, perspective, scene).' : ''}
 3. Description: MUST be between ${descLen[0]} and ${descLen[1]} characters long.
    - MUST be multiple complete sentences. Do not truncate.
 
@@ -94,12 +99,17 @@ Guidelines:
   }
 
   async generatePrompt(base64Image, options) {
-    const { model = "gemini-1.5-flash", promptLen = [100, 500] } = options;
+    const { model = "gemini-1.5-flash", promptLen = [100, 500], isVideo, videoInfo } = options;
     const base64Data = base64Image.split(',')[1] || base64Image;
     const mimeType = base64Image.split(';')[0].split(':')[1] || 'image/jpeg';
 
-    const prompt = `Analyze this image and provide a highly detailed, creative, and descriptive manual prompt that could be used to recreate this image. 
-Focus on style, lighting, composition, and subject details. 
+    const targetType = isVideo ? 'stock video clip frame' : 'image';
+    const videoDetails = isVideo && videoInfo 
+      ? `Video Details: Duration: ${videoInfo.formattedDuration}, Resolution: ${videoInfo.resolutionLabel}.` 
+      : '';
+
+    const prompt = `Analyze this ${targetType} and provide a highly detailed, creative, and descriptive manual prompt that could be used to recreate this ${isVideo ? 'video footage' : 'image'}.
+${videoDetails ? `${videoDetails}\n` : ''}Focus on ${isVideo ? 'camera motion, action pacing, ' : ''}style, lighting, composition, and subject details. 
 
 STRICT REQUIREMENT: The output prompt MUST be between ${promptLen[0]} and ${promptLen[1]} characters long.
 

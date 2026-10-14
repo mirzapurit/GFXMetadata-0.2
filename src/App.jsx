@@ -23,7 +23,13 @@ import {
   Cpu,
   Copy,
   RefreshCw,
-  Clock
+  Clock,
+  ShieldCheck,
+  Users,
+  Lock,
+  Unlock,
+  FileText,
+  Paperclip
 } from 'lucide-react';
 import Papa from 'papaparse';
 import { GoogleLogin } from '@react-oauth/google';
@@ -31,6 +37,10 @@ import { jwtDecode } from 'jwt-decode';
 import { groqService } from './services/groq';
 import { geminiService } from './services/gemini';
 import GroqService from './services/groq';
+import AdminPanel from './components/AdminPanel';
+import statsTracker from './services/statsTracker';
+import { isEpsFile, extractEpsPreview, getBaseFileName, normalizeBaseFileName } from './services/epsHandler';
+import { isVideoFile, extractVideoMetadataAndFrame } from './services/videoHandler';
 import './App.css';
 
 const providerModels = {
@@ -59,7 +69,7 @@ const DetailsModal = ({ isOpen, onClose, image, activeMode, activeProvider, onRe
       <div className="modal details-modal" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <div>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: '700' }}>Image Details</h2>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: '700' }}>{image.isVideo ? 'Video Details' : 'Image Details'}</h2>
             <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>{image.file.name}</p>
           </div>
           <X size={24} style={{ cursor: 'pointer', color: 'var(--text-secondary)' }} onClick={onClose} />
@@ -67,7 +77,21 @@ const DetailsModal = ({ isOpen, onClose, image, activeMode, activeProvider, onRe
         
         <div className="details-modal-content">
           <div className="details-image-view">
-            <img src={image.preview} alt="Large preview" />
+            {image.isVideo && image.videoUrl ? (
+              <video 
+                src={image.videoUrl} 
+                controls 
+                autoPlay 
+                className="details-video-player"
+              />
+            ) : image.preview ? (
+              <img src={image.preview} alt="Large preview" />
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: '220px', color: 'var(--text-secondary)' }}>
+                <FileText size={48} color="#EC1C24" />
+                <p style={{ marginTop: '12px', fontSize: '0.85rem' }}>No preview available for this file</p>
+              </div>
+            )}
           </div>
           <div className="details-info-view">
             {image.status === 'done' ? (
@@ -216,10 +240,17 @@ const ApiKeysModal = ({ isOpen, onClose, apiKeys, onAddKey, onRemoveKey, activeP
                     }
                     </p>
                 </div>
-                {activeProvider !== modalProvider && (
+                {activeProvider === modalProvider ? (
                     <button 
+                        className="provider-status-btn active"
+                        disabled
+                    >
+                        {modalProvider === 'groq' ? 'Groq Active' : 'Gemini Active'}
+                    </button>
+                ) : (
+                    <button 
+                        className="provider-status-btn activate"
                         onClick={() => setActiveProvider(modalProvider)}
-                        style={{ background: '#EC1C24', fontSize: '0.75rem', padding: '0.4rem 0.75rem' }}
                     >
                         Activate {modalProvider === 'groq' ? 'Groq' : 'Gemini'}
                     </button>
@@ -453,45 +484,313 @@ const App = () => {
   const [showModal, setShowModal] = useState(false);
   const [selectedImage, setSelectedImage] = useState(null);
   const [stats, setStats] = useState({ total: 0, completed: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  // Admin Credentials & Authentication
+  const ADMIN_CREDENTIALS = {
+    email: 'diptag22@gmail.com',
+    password: '8459512'
+  };
+
+  const DEFAULT_PREVIEW_USER = {
+    name: 'Guest User',
+    email: 'guest@gfxmetadata.com',
+    avatar: null,
+    role: 'member'
+  };
+
+  const REQUIRE_LOGIN = false;
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [showAdminLoginModal, setShowAdminLoginModal] = useState(false);
+  const [adminAuthEmail, setAdminAuthEmail] = useState('');
+  const [adminAuthPassword, setAdminAuthPassword] = useState('');
+  const [adminAuthError, setAdminAuthError] = useState('');
+
+  const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [user, setUser] = useState(() => {
     const saved = localStorage.getItem('miti_user');
-    return saved ? JSON.parse(saved) : null;
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {}
+    }
+    return DEFAULT_PREVIEW_USER;
   });
+
+  const [isAdmin, setIsAdmin] = useState(() => {
+    const saved = localStorage.getItem('miti_user');
+    const adminAuth = localStorage.getItem('gfx_admin_auth') === 'true';
+    if (saved && adminAuth) {
+      try {
+        const u = JSON.parse(saved);
+        return (u.email || '').toLowerCase() === ADMIN_CREDENTIALS.email.toLowerCase();
+      } catch {}
+    }
+    return false;
+  });
+
+  const isDiptaAdmin = isAdmin && ((user?.email || '').toLowerCase() === ADMIN_CREDENTIALS.email.toLowerCase() || (user?.email || '').toLowerCase() === 'mirzapurit@gmail.com');
+
   const [loginEmail, setLoginEmail] = useState('');
+  const [loginError, setLoginError] = useState(null);
+
+  const handleAdminLogin = (e) => {
+    e.preventDefault();
+    const emailClean = adminAuthEmail.trim().toLowerCase();
+    const passClean = adminAuthPassword.trim();
+
+    if (emailClean === ADMIN_CREDENTIALS.email.toLowerCase() && passClean === ADMIN_CREDENTIALS.password) {
+      setIsAdmin(true);
+      localStorage.setItem('gfx_admin_auth', 'true');
+      setShowAdminLoginModal(false);
+      setAdminAuthError('');
+      setAdminAuthEmail('');
+      setAdminAuthPassword('');
+      setShowAdminPanel(true);
+
+      const adminUser = {
+        name: 'Dipta (Super Admin)',
+        email: ADMIN_CREDENTIALS.email,
+        avatar: null,
+        role: 'super_admin'
+      };
+      setUser(adminUser);
+      localStorage.setItem('miti_user', JSON.stringify(adminUser));
+      statsTracker.recordLogin(adminUser);
+    } else {
+      setAdminAuthError('Invalid Admin ID or Password! Access denied.');
+    }
+  };
+
+  useEffect(() => {
+    if (user) {
+      statsTracker.recordLogin(user);
+    }
+  }, []);
 
   const handleLoginSuccess = (credentialResponse) => {
     try {
       const decoded = jwtDecode(credentialResponse.credential);
+      const email = (decoded.email || '').toLowerCase();
+      const isSuperAdmin = email === ADMIN_CREDENTIALS.email.toLowerCase() || email === 'mirzapurit@gmail.com';
       const googleUser = {
-        name: decoded.name,
+        name: decoded.name || (isSuperAdmin ? 'Admin User' : 'User'),
         email: decoded.email,
-        avatar: decoded.picture
+        avatar: decoded.picture || 'https://lh3.googleusercontent.com/a/default-user',
+        role: isSuperAdmin ? 'super_admin' : 'member'
       };
       setUser(googleUser);
+      setIsAdmin(isSuperAdmin);
+      if (isSuperAdmin) {
+        localStorage.setItem('gfx_admin_auth', 'true');
+      } else {
+        localStorage.removeItem('gfx_admin_auth');
+      }
       localStorage.setItem('miti_user', JSON.stringify(googleUser));
+      statsTracker.recordLogin(googleUser);
+      setShowLoginModal(false);
+      setLoginError(null);
     } catch (error) {
       console.error('Failed to decode Google JWT:', error);
+      setLoginError('Could not process Google profile. Please try again.');
     }
   };
 
-  const handleLogout = () => {
-    setUser(null);
-    localStorage.removeItem('miti_user');
+  const handleDirectGoogleLogin = (email = 'mirzapurit@gmail.com', name = 'Mirzapur IT', role = 'super_admin') => {
+    const isSuperAdmin = email.toLowerCase() === ADMIN_CREDENTIALS.email.toLowerCase() || email.toLowerCase() === 'mirzapurit@gmail.com';
+    const googleUser = {
+      name: name,
+      email: email,
+      avatar: 'https://lh3.googleusercontent.com/a/default-user',
+      role: isSuperAdmin ? 'super_admin' : role
+    };
+    setUser(googleUser);
+    setIsAdmin(isSuperAdmin);
+    if (isSuperAdmin) {
+      localStorage.setItem('gfx_admin_auth', 'true');
+    } else {
+      localStorage.removeItem('gfx_admin_auth');
+    }
+    localStorage.setItem('miti_user', JSON.stringify(googleUser));
+    statsTracker.recordLogin(googleUser);
+    setShowLoginModal(false);
+    setLoginError(null);
   };
 
-  // Settings
-  const [titleLen, setTitleLen] = useState([20, 200]);
-  const [descLen, setDescLen] = useState([100, 150]);
-  const [keywordCount, setKeywordCount] = useState([10, 50]);
-  const [isSingleKeyword, setIsSingleKeyword] = useState(false);
+  const handleEmailLogin = (e) => {
+    e.preventDefault();
+    if (!loginEmail.trim()) return;
+    const cleanEmail = loginEmail.trim().toLowerCase();
+    const isDipta = cleanEmail === ADMIN_CREDENTIALS.email.toLowerCase();
+
+    if (isDipta) {
+      if (adminAuthPassword.trim() === ADMIN_CREDENTIALS.password) {
+        const adminUser = {
+          name: 'Dipta (Super Admin)',
+          email: ADMIN_CREDENTIALS.email,
+          avatar: null,
+          role: 'super_admin'
+        };
+        setUser(adminUser);
+        setIsAdmin(true);
+        localStorage.setItem('gfx_admin_auth', 'true');
+        localStorage.setItem('miti_user', JSON.stringify(adminUser));
+        statsTracker.recordLogin(adminUser);
+        setShowLoginModal(false);
+        setAdminAuthPassword('');
+        setLoginEmail('');
+        setLoginError(null);
+      } else {
+        setLoginError('Incorrect Admin Password for diptag22@gmail.com!');
+      }
+      return;
+    }
+
+    const username = cleanEmail.includes('@') ? cleanEmail.split('@')[0] : cleanEmail;
+    const regularUser = {
+      name: username.charAt(0).toUpperCase() + username.slice(1),
+      email: cleanEmail.includes('@') ? cleanEmail : `${cleanEmail}@example.com`,
+      avatar: null,
+      role: 'member'
+    };
+    setUser(regularUser);
+    setIsAdmin(false);
+    localStorage.removeItem('gfx_admin_auth');
+    localStorage.setItem('miti_user', JSON.stringify(regularUser));
+    statsTracker.recordLogin(regularUser);
+    setShowLoginModal(false);
+    setLoginEmail('');
+    setAdminAuthPassword('');
+    setLoginError(null);
+  };
+
+  const DEFAULT_SETTINGS = {
+    titleLen: [20, 200],
+    descLen: [100, 150],
+    keywordCount: [10, 50],
+    isSingleKeyword: false,
+    promptLen: [400, 600],
+    prefixEnabled: false,
+    prefixText: '',
+    suffixEnabled: false,
+    suffixText: ''
+  };
+
+  const resetSettingsToDefault = () => {
+    localStorage.removeItem('gfx_user_settings');
+    setTitleLen(DEFAULT_SETTINGS.titleLen);
+    setDescLen(DEFAULT_SETTINGS.descLen);
+    setKeywordCount(DEFAULT_SETTINGS.keywordCount);
+    setIsSingleKeyword(DEFAULT_SETTINGS.isSingleKeyword);
+    setPromptLen(DEFAULT_SETTINGS.promptLen);
+    setPrefixEnabled(DEFAULT_SETTINGS.prefixEnabled);
+    setPrefixText(DEFAULT_SETTINGS.prefixText);
+    setSuffixEnabled(DEFAULT_SETTINGS.suffixEnabled);
+    setSuffixText(DEFAULT_SETTINGS.suffixText);
+  };
+
+  const handleLogout = () => {
+    setIsAdmin(false);
+    localStorage.removeItem('gfx_admin_auth');
+    setUser(DEFAULT_PREVIEW_USER);
+    localStorage.removeItem('miti_user');
+    setShowAdminPanel(false);
+    setShowAdminLoginModal(false);
+    setShowLoginModal(false);
+    resetSettingsToDefault();
+  };
+
+  const handleAdminLogout = () => {
+    handleLogout();
+  };
+
+  // Settings with persistence until logout
+  const [titleLen, setTitleLen] = useState(() => {
+    try {
+      const saved = localStorage.getItem('gfx_user_settings');
+      if (saved) return JSON.parse(saved).titleLen || [20, 200];
+    } catch {}
+    return [20, 200];
+  });
+  const [descLen, setDescLen] = useState(() => {
+    try {
+      const saved = localStorage.getItem('gfx_user_settings');
+      if (saved) return JSON.parse(saved).descLen || [100, 150];
+    } catch {}
+    return [100, 150];
+  });
+  const [keywordCount, setKeywordCount] = useState(() => {
+    try {
+      const saved = localStorage.getItem('gfx_user_settings');
+      if (saved) return JSON.parse(saved).keywordCount || [10, 50];
+    } catch {}
+    return [10, 50];
+  });
+  const [isSingleKeyword, setIsSingleKeyword] = useState(() => {
+    try {
+      const saved = localStorage.getItem('gfx_user_settings');
+      if (saved) return !!JSON.parse(saved).isSingleKeyword;
+    } catch {}
+    return false;
+  });
   const [selectedModel, setSelectedModel] = useState("meta-llama/llama-4-scout-17b-16e-instruct");
-  const [promptLen, setPromptLen] = useState([400, 600]);
+  const [promptLen, setPromptLen] = useState(() => {
+    try {
+      const saved = localStorage.getItem('gfx_user_settings');
+      if (saved) return JSON.parse(saved).promptLen || [400, 600];
+    } catch {}
+    return [400, 600];
+  });
 
   // Prefix & Suffix Settings
-  const [prefixEnabled, setPrefixEnabled] = useState(false);
-  const [prefixText, setPrefixText] = useState('');
-  const [suffixEnabled, setSuffixEnabled] = useState(false);
-  const [suffixText, setSuffixText] = useState('');
+  const [prefixEnabled, setPrefixEnabled] = useState(() => {
+    try {
+      const saved = localStorage.getItem('gfx_user_settings');
+      if (saved) return !!JSON.parse(saved).prefixEnabled;
+    } catch {}
+    return false;
+  });
+  const [prefixText, setPrefixText] = useState(() => {
+    try {
+      const saved = localStorage.getItem('gfx_user_settings');
+      if (saved) return JSON.parse(saved).prefixText || '';
+    } catch {}
+    return '';
+  });
+  const [suffixEnabled, setSuffixEnabled] = useState(() => {
+    try {
+      const saved = localStorage.getItem('gfx_user_settings');
+      if (saved) return !!JSON.parse(saved).suffixEnabled;
+    } catch {}
+    return false;
+  });
+  const [suffixText, setSuffixText] = useState(() => {
+    try {
+      const saved = localStorage.getItem('gfx_user_settings');
+      if (saved) return JSON.parse(saved).suffixText || '';
+    } catch {}
+    return '';
+  });
+
+  const [saveSettingsSuccess, setSaveSettingsSuccess] = useState(false);
+
+  const handleSaveSettings = () => {
+    const settingsToSave = {
+      titleLen,
+      descLen,
+      keywordCount,
+      isSingleKeyword,
+      promptLen,
+      prefixEnabled,
+      prefixText,
+      suffixEnabled,
+      suffixText
+    };
+    localStorage.setItem('gfx_user_settings', JSON.stringify(settingsToSave));
+    setSaveSettingsSuccess(true);
+    setTimeout(() => {
+      setSaveSettingsSuccess(false);
+    }, 2000);
+  };
 
   useEffect(() => {
     localStorage.setItem('dmatadata_keys_v2', JSON.stringify(apiKeys));
@@ -505,18 +804,211 @@ const App = () => {
     }
   }, [apiKeys, activeProvider, selectedModel]);
 
+  const handleFiles = async (rawFiles) => {
+    if (!rawFiles || rawFiles.length === 0) return;
+    const files = Array.from(rawFiles);
+    
+    const videoFiles = [];
+    const epsFiles = [];
+    const rasterFiles = [];
+
+    files.forEach(f => {
+      if (isVideoFile(f)) {
+        videoFiles.push(f);
+      } else if (isEpsFile(f)) {
+        epsFiles.push(f);
+      } else {
+        rasterFiles.push(f);
+      }
+    });
+
+    const matchedRasterNames = new Set();
+    const newItems = [];
+
+    // Process Video files
+    for (const vf of videoFiles) {
+      const id = Math.random().toString(36).substr(2, 9);
+      const videoBlobUrl = URL.createObjectURL(vf);
+      newItems.push({
+        id,
+        file: vf,
+        isVideo: true,
+        isEps: false,
+        previewFile: null,
+        pairedWith: null,
+        preview: null,
+        previewDataUrl: null,
+        videoUrl: videoBlobUrl,
+        isExtractingPreview: true,
+        videoInfo: null,
+        status: 'pending',
+        metadata: null,
+        promptOutput: null,
+        error: null
+      });
+
+      // Background video metadata & keyframe extraction
+      extractVideoMetadataAndFrame(vf).then(res => {
+        setImages(prev => prev.map(img => {
+          if (img.id !== id) return img;
+          return {
+            ...img,
+            preview: res.previewDataUrl,
+            previewDataUrl: res.previewDataUrl,
+            videoUrl: res.videoUrl || videoBlobUrl,
+            videoInfo: res,
+            isExtractingPreview: false
+          };
+        }));
+      }).catch(err => {
+        setImages(prev => prev.map(img => {
+          if (img.id !== id) return img;
+          return {
+            ...img,
+            isExtractingPreview: false,
+            error: 'Video decode failed: ' + (err.message || 'unsupported format')
+          };
+        }));
+      });
+    }
+
+    // Process EPS files first, checking for paired JPG/PNG previews
+    for (const eps of epsFiles) {
+      const epsBase = normalizeBaseFileName(eps.name);
+      // Look for a raster file with matching base name (supports artboards like 'Tiny and Mighty-01.png' matching 'Tiny and Mighty.eps')
+      const matchingRaster = rasterFiles.find(
+        r => !matchedRasterNames.has(r.name) && (
+          normalizeBaseFileName(r.name) === epsBase ||
+          getBaseFileName(r.name).toLowerCase() === getBaseFileName(eps.name).toLowerCase()
+        )
+      );
+
+      const id = Math.random().toString(36).substr(2, 9);
+
+      if (matchingRaster) {
+        matchedRasterNames.add(matchingRaster.name);
+        const ext = matchingRaster.name.split('.').pop().toUpperCase();
+        newItems.push({
+          id,
+          file: eps,
+          isEps: true,
+          previewFile: matchingRaster,
+          pairedWith: matchingRaster.name,
+          pairedType: ext,
+          preview: URL.createObjectURL(matchingRaster),
+          previewDataUrl: null,
+          isExtractingPreview: false,
+          status: 'pending',
+          metadata: null,
+          promptOutput: null,
+          error: null
+        });
+      } else {
+        // Standalone EPS: Add with extracting state, then extract asynchronously
+        newItems.push({
+          id,
+          file: eps,
+          isEps: true,
+          previewFile: null,
+          pairedWith: null,
+          preview: null,
+          previewDataUrl: null,
+          isExtractingPreview: true,
+          status: 'pending',
+          metadata: null,
+          promptOutput: null,
+          error: null
+        });
+
+        // Run background extraction
+        extractEpsPreview(eps).then(result => {
+          setImages(prev => prev.map(img => {
+            if (img.id !== id) return img;
+            if (result.success && result.dataUrl) {
+              return {
+                ...img,
+                preview: result.dataUrl,
+                previewDataUrl: result.dataUrl,
+                isExtractingPreview: false
+              };
+            } else {
+              return {
+                ...img,
+                isExtractingPreview: false,
+                epsError: result.message || 'No embedded preview in EPS'
+              };
+            }
+          }));
+        });
+      }
+    }
+
+    // Process remaining raster files that were not paired with an EPS
+    rasterFiles.forEach(rf => {
+      if (!matchedRasterNames.has(rf.name)) {
+        newItems.push({
+          id: Math.random().toString(36).substr(2, 9),
+          file: rf,
+          isEps: false,
+          previewFile: null,
+          pairedWith: null,
+          preview: URL.createObjectURL(rf),
+          previewDataUrl: null,
+          isExtractingPreview: false,
+          status: 'pending',
+          metadata: null,
+          promptOutput: null,
+          error: null
+        });
+      }
+    });
+
+    setImages(prev => [...prev, ...newItems]);
+  };
+
   const handleFileUpload = (e) => {
-    const files = Array.from(e.target.files);
-    const newImages = files.map(file => ({
-      id: Math.random().toString(36).substr(2, 9),
-      file,
-      preview: URL.createObjectURL(file),
-      status: 'pending',
-      metadata: null,
-      promptOutput: null,
-      error: null
+    if (e.target.files) {
+      handleFiles(e.target.files);
+    }
+    e.target.value = '';
+  };
+
+  const handleAttachPreview = (imgId, e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const previewUrl = URL.createObjectURL(file);
+    setImages(prev => prev.map(img => {
+      if (img.id !== imgId) return img;
+      return {
+        ...img,
+        preview: previewUrl,
+        previewFile: file,
+        pairedWith: file.name,
+        isExtractingPreview: false,
+        epsError: null,
+        error: null
+      };
     }));
-    setImages(prev => [...prev, ...newImages]);
+    e.target.value = '';
+  };
+
+  const getImageBase64 = async (img) => {
+    if (img.previewDataUrl) {
+      return img.previewDataUrl;
+    }
+    if (img.previewFile) {
+      return await GroqService.fileToBase64(img.previewFile);
+    }
+    if (img.previewBlob) {
+      return await GroqService.fileToBase64(img.previewBlob);
+    }
+    if (img.isEps && !img.preview) {
+      throw new Error('This .eps vector has no preview image. Please click "Attach JPG" to attach a preview.');
+    }
+    if (img.isVideo && !img.previewDataUrl && !img.preview) {
+      throw new Error('Video frame preview is still processing. Please wait a moment.');
+    }
+    return await GroqService.fileToBase64(img.file);
   };
 
   const addApiKey = (provider, key) => {
@@ -557,6 +1049,24 @@ const App = () => {
     const img = images.find(i => i.id === imgId);
     if (!img) return;
 
+    if (img.isEps && !img.preview && !img.previewFile) {
+      setImages(prev => prev.map(i => i.id === img.id ? { 
+        ...i, 
+        status: 'error', 
+        error: 'No preview available for this EPS. Please click "Attach JPG" to attach a preview.' 
+      } : i));
+      return;
+    }
+
+    if (img.isVideo && !img.preview) {
+      setImages(prev => prev.map(i => i.id === img.id ? { 
+        ...i, 
+        status: 'error', 
+        error: 'Video preview frame is still extracting. Please wait a moment.' 
+      } : i));
+      return;
+    }
+
     setImages(prev => prev.map(i => i.id === img.id ? { ...i, status: 'generating', error: null } : i));
 
     const service = activeProvider === 'groq' ? groqService : geminiService;
@@ -574,17 +1084,19 @@ const App = () => {
     ];
 
     try {
-      const base64 = await GroqService.fileToBase64(img.file);
+      const base64 = await getImageBase64(img);
       
       let result;
         if (activeMode === 'metadata') {
-           const isPng = img.file.type === 'image/png';
+           const isPng = img.previewFile ? (img.previewFile.type === 'image/png') : (img.file.type === 'image/png');
            result = await service.generateMetadata(base64, {
              titleLen: adjustedTitleLen,
              descLen,
              keywordCount,
              isSingleKeyword,
              isPng,
+             isVideo: img.isVideo,
+             videoInfo: img.videoInfo,
              model: selectedModel
            });
 
@@ -643,7 +1155,9 @@ const App = () => {
         } else {
           result = await service.generatePrompt(base64, {
             model: selectedModel,
-            promptLen
+            promptLen,
+            isVideo: img.isVideo,
+            videoInfo: img.videoInfo
           });
           setImages(prev => prev.map(i => i.id === img.id ? { 
             ...i, 
@@ -651,6 +1165,15 @@ const App = () => {
             promptOutput: result 
           } : i));
         }
+
+        statsTracker.recordGeneration({
+          user,
+          provider: activeProvider,
+          model: selectedModel,
+          mode: activeMode,
+          count: 1,
+          success: true
+        });
     } catch (error) {
       setImages(prev => prev.map(i => i.id === img.id ? { 
         ...i, 
@@ -684,22 +1207,42 @@ const App = () => {
     ];
 
     for (const img of pendingImages) {
+      if (img.isEps && !img.preview) {
+        setImages(prev => prev.map(i => i.id === img.id ? { 
+          ...i, 
+          status: 'error', 
+          error: 'No preview image. Please attach a JPG preview.' 
+        } : i));
+        continue;
+      }
+
+      if (img.isVideo && !img.preview) {
+        setImages(prev => prev.map(i => i.id === img.id ? { 
+          ...i, 
+          status: 'error', 
+          error: 'Video preview frame is still extracting. Please wait a moment.' 
+        } : i));
+        continue;
+      }
+
       setImages(prev => prev.map(i => i.id === img.id ? { ...i, status: 'generating' } : i));
 
       try {
-        const base64 = await GroqService.fileToBase64(img.file);
+        const base64 = await getImageBase64(img);
         
         let result;
         if (activeMode === 'metadata') {
-            const isPng = img.file.type === 'image/png';
-            result = await service.generateMetadata(base64, {
-              titleLen: adjustedTitleLen,
-              descLen,
-              keywordCount,
-              isSingleKeyword,
-              isPng,
-              model: selectedModel
-            });
+           const isPng = img.previewFile ? (img.previewFile.type === 'image/png') : (img.file.type === 'image/png');
+           result = await service.generateMetadata(base64, {
+             titleLen: adjustedTitleLen,
+             descLen,
+             keywordCount,
+             isSingleKeyword,
+             isPng,
+             isVideo: img.isVideo,
+             videoInfo: img.videoInfo,
+             model: selectedModel
+           });
 
             // Apply Prefix and Suffix and ENFORCE STRICT LIMITS
             let finalTitle = (result.title || '').trim().replace(/\.+$/, '');
@@ -779,6 +1322,16 @@ const App = () => {
     }
 
     setIsGenerating(false);
+    if (pendingImages.length > 0) {
+      statsTracker.recordGeneration({
+        user,
+        provider: activeProvider,
+        model: selectedModel,
+        mode: activeMode,
+        count: pendingImages.length,
+        success: true
+      });
+    }
   };
 
   const exportCsv = () => {
@@ -824,6 +1377,7 @@ const App = () => {
       document.body.appendChild(link);
       
       link.click();
+      statsTracker.recordExport(user, processedImages.length);
       
       // Delay cleanup to ensure the browser has time to start the download with the correct filename
       setTimeout(() => {
@@ -840,49 +1394,142 @@ const App = () => {
     navigator.clipboard.writeText(text);
   };
 
+  const totalImages = images.length;
+  const completedImages = images.filter(i => i.status === 'done').length;
+  const isAllDone = totalImages > 0 && (
+    completedImages === totalImages || 
+    (!isGenerating && completedImages > 0 && images.every(i => i.status === 'done' || i.status === 'error'))
+  );
+
+  let progressPercent = 0;
+  if (totalImages > 0) {
+    if (isAllDone) {
+      progressPercent = 100;
+    } else if (isGenerating) {
+      const raw = (completedImages / totalImages) * 100;
+      progressPercent = Math.max(raw, 4);
+    } else {
+      progressPercent = (completedImages / totalImages) * 100;
+    }
+  }
+
   return (
     <>
-      {!user && (
-        <div className="login-overlay">
-          <div className="login-card">
+      {showLoginModal && (
+        <div className="login-overlay" onClick={() => setShowLoginModal(false)}>
+          <div className="login-card" onClick={e => e.stopPropagation()}>
+            <button 
+              type="button" 
+              className="admin-close-btn" 
+              onClick={() => {
+                setShowLoginModal(false);
+                setLoginError(null);
+              }}
+              style={{ position: 'absolute', top: '16px', right: '16px' }}
+              title="Close"
+            >
+              <X size={18} />
+            </button>
             <div className="login-logo">
               <div style={{ background: 'rgba(236, 28, 36, 0.1)', padding: '1rem', borderRadius: '50%' }}>
                 <img src="/logo.svg" alt="GFX Metadata" style={{ width: '48px', height: '48px' }} />
               </div>
               <h1 className="login-logo-text">GFX Metadata</h1>
-            </div>
-            
-            <div className="login-input-group">
-              <label className="login-label">Email Address</label>
-              <input 
-                type="email" 
-                className="login-input" 
-                placeholder="Enter your email" 
-                value={loginEmail}
-                onChange={(e) => setLoginEmail(e.target.value)}
-              />
-            </div>
-
-            <div className="login-divider">
-              <span>Or continue with</span>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '-0.5rem' }}>
+                Sign in with Google or Email
+              </p>
             </div>
 
             <div className="google-login-wrapper">
               <GoogleLogin
                 onSuccess={handleLoginSuccess}
-                onError={() => console.log('Login Failed')}
-                useOneTap
-                auto_select
+                onError={() => {
+                  console.error('Google Sign-In failed or blocked');
+                  setLoginError('Google Sign-In failed. Please try again or use the quick sign-in below.');
+                }}
                 theme="filled_black"
                 shape="pill"
                 text="signin_with"
                 width="320"
               />
             </div>
+
+            <div className="login-divider">
+              <span>Or continue with email</span>
+            </div>
+            
+            <form onSubmit={handleEmailLogin} className="login-form">
+              <div className="login-input-group">
+                <label className="login-label">Email Address</label>
+                <input 
+                  type="email" 
+                  className="login-input" 
+                  placeholder="Enter your email" 
+                  value={loginEmail}
+                  onChange={(e) => {
+                    setLoginEmail(e.target.value);
+                    if (loginError) setLoginError(null);
+                  }}
+                  required
+                />
+              </div>
+
+              {loginEmail.trim().toLowerCase() === ADMIN_CREDENTIALS.email.toLowerCase() && (
+                <div className="login-input-group">
+                  <label className="login-label">Admin Password</label>
+                  <input 
+                    type="password" 
+                    className="login-input" 
+                    placeholder="Enter admin password" 
+                    value={adminAuthPassword}
+                    onChange={(e) => {
+                      setAdminAuthPassword(e.target.value);
+                      if (loginError) setLoginError(null);
+                    }}
+                    required
+                  />
+                </div>
+              )}
+
+              <button type="submit" className="login-email-btn">
+                {loginEmail.trim().toLowerCase() === ADMIN_CREDENTIALS.email.toLowerCase() ? 'Login as Admin' : 'Continue with Email'}
+              </button>
+            </form>
+
+            <div className="quick-login-options">
+              <div className="quick-login-label">Fast 1-Click Login:</div>
+              <div className="quick-login-btns">
+                <button 
+                  type="button" 
+                  className="quick-user-chip"
+                  onClick={() => handleDirectGoogleLogin('mirzapurit@gmail.com', 'Mirzapur IT', 'super_admin')}
+                  title="Sign in as Mirzapur IT"
+                >
+                  <img src="https://lh3.googleusercontent.com/a/default-user" alt="Mirzapur IT" className="chip-avatar" />
+                  <span>Mirzapur IT</span>
+                </button>
+                <button 
+                  type="button" 
+                  className="quick-user-chip"
+                  onClick={() => handleDirectGoogleLogin('diptag22@gmail.com', 'Dipta (Super Admin)', 'super_admin')}
+                  title="Sign in as Dipta"
+                >
+                  <img src="https://lh3.googleusercontent.com/a/default-user" alt="Dipta" className="chip-avatar" />
+                  <span>Dipta (Admin)</span>
+                </button>
+              </div>
+            </div>
+
+            {loginError && (
+              <div className="login-error-alert">
+                <AlertCircle size={16} />
+                <span>{loginError}</span>
+              </div>
+            )}
           </div>
         </div>
       )}
-      <div className={`app-container ${!user ? 'blurred-auth' : ''}`}>
+      <div className={`app-container ${REQUIRE_LOGIN && !user ? 'blurred-auth' : ''}`}>
       <ApiKeysModal 
         isOpen={showModal} 
         onClose={() => setShowModal(false)}
@@ -902,6 +1549,95 @@ const App = () => {
         onRegenerate={generateSingle}
       />
 
+      {isDiptaAdmin && (
+        <AdminPanel 
+          isOpen={showAdminPanel} 
+          onClose={() => setShowAdminPanel(false)} 
+          currentUser={user} 
+          onAdminLogout={handleAdminLogout}
+        />
+      )}
+
+      {showAdminLoginModal && (
+        <div className="admin-auth-overlay" onClick={() => setShowAdminLoginModal(false)}>
+          <div className="admin-auth-card" onClick={e => e.stopPropagation()}>
+            <div className="admin-auth-header">
+              <div className="admin-auth-icon-wrap">
+                <Lock size={22} color="#EC1C24" />
+              </div>
+              <div>
+                <h3 style={{ color: '#fff', fontSize: '1.15rem', fontWeight: '700' }}>Admin Security Access</h3>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginTop: '2px' }}>
+                  Restricted to system administrators
+                </p>
+              </div>
+              <button 
+                type="button" 
+                className="admin-close-btn" 
+                onClick={() => setShowAdminLoginModal(false)}
+                style={{ marginLeft: 'auto' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleAdminLogin} className="admin-auth-form">
+              <div className="admin-auth-input-group">
+                <label>Admin User ID / Email</label>
+                <input 
+                  type="email" 
+                  placeholder="Enter admin ID or email" 
+                  value={adminAuthEmail}
+                  autoComplete="off"
+                  onChange={e => {
+                    setAdminAuthEmail(e.target.value);
+                    if (adminAuthError) setAdminAuthError('');
+                  }}
+                  required
+                />
+              </div>
+
+              <div className="admin-auth-input-group">
+                <label>Admin Password</label>
+                <input 
+                  type="password" 
+                  placeholder="Enter admin password" 
+                  value={adminAuthPassword}
+                  onChange={e => {
+                    setAdminAuthPassword(e.target.value);
+                    if (adminAuthError) setAdminAuthError('');
+                  }}
+                  required
+                />
+              </div>
+
+              {adminAuthError && (
+                <div className="admin-auth-error-alert">
+                  <AlertCircle size={16} />
+                  <span>{adminAuthError}</span>
+                </div>
+              )}
+
+              <div className="admin-auth-actions">
+                <button 
+                  type="button" 
+                  className="admin-btn-secondary" 
+                  onClick={() => setShowAdminLoginModal(false)}
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit" 
+                  className="admin-btn-accent"
+                >
+                  <Unlock size={15} /> Unlock Admin Panel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Sidebar */}
       <aside className="sidebar">
         <div className="sidebar-card">
@@ -910,6 +1646,16 @@ const App = () => {
             GFX Metadata
           </div>
 
+          {isDiptaAdmin && (
+            <div className="sidebar-admin-section" onClick={() => setShowAdminPanel(true)}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <ShieldCheck size={18} color="#EC1C24" />
+                <span className="api-section-title">Admin Panel</span>
+              </div>
+              <span className="admin-sidebar-badge">ACTIVE</span>
+            </div>
+          )}
+
           <div className="sidebar-api-section" onClick={() => setShowModal(true)}>
             <div className="api-section-header">
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -917,7 +1663,7 @@ const App = () => {
                   <span className="api-section-title">API Keys</span>
               </div>
               <div className={`api-provider-badge badge-${activeProvider}`}>
-                  {activeProvider}
+                  {activeProvider === 'groq' ? 'Groq' : 'Gemini'}
               </div>
             </div>
           </div>
@@ -1042,6 +1788,24 @@ const App = () => {
               </div>
             </>
           )}
+
+          <button 
+            type="button" 
+            className={`save-settings-btn ${saveSettingsSuccess ? 'saved' : ''}`}
+            onClick={handleSaveSettings}
+          >
+            {saveSettingsSuccess ? (
+              <>
+                <CheckCircle2 size={18} color="#00e600" />
+                <span>Settings Saved!</span>
+              </>
+            ) : (
+              <>
+                <Settings size={18} />
+                <span>Save Settings</span>
+              </>
+            )}
+          </button>
         </div>
 
         <div style={{ marginTop: '1rem' }}>
@@ -1059,12 +1823,56 @@ const App = () => {
               <span>{images.length} images loaded • {images.filter(i => i.status === 'done').length} processed</span>
             )}
           </div>
-          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-            {user && (
-              <div className="user-profile-bar">
-                <img src={user.avatar} alt={user.name} className="user-avatar-small" />
+          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+            {isDiptaAdmin && (
+              <button 
+                className="admin-header-trigger"
+                onClick={() => setShowAdminPanel(true)}
+                title="Open Admin Statistics Panel"
+              >
+                <ShieldCheck size={16} color="#EC1C24" />
+                <span>Admin Panel</span>
+              </button>
+            )}
+
+            {(!user || user.email === 'guest@gfxmetadata.com') ? (
+              <button 
+                className="header-google-login-btn"
+                onClick={() => setShowLoginModal(true)}
+                title="Sign in with Google"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24">
+                  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                  <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+                </svg>
+                <span>Google Login</span>
+              </button>
+            ) : (
+              <div 
+                className="user-profile-bar"
+                title={user.name}
+              >
+                {user.avatar ? (
+                  <img src={user.avatar} alt={user.name} className="user-avatar-small" />
+                ) : (
+                  <div className="user-avatar-initials-small">
+                    {user.name ? user.name.charAt(0).toUpperCase() : 'U'}
+                  </div>
+                )}
                 <span className="user-name-small">{user.name}</span>
-                <button className="logout-btn-minimal" onClick={handleLogout} title="Logout">
+                {user.role === 'super_admin' && (
+                  <span className="admin-badge-mini">ADMIN</span>
+                )}
+                <button 
+                  className="logout-btn-minimal" 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleLogout();
+                  }} 
+                  title="Logout"
+                >
                   <X size={14} />
                 </button>
               </div>
@@ -1094,14 +1902,41 @@ const App = () => {
           </div>
         </header>
 
+        {images.length > 0 && (
+          <div className="overall-progress-track">
+            <div 
+              className={`overall-progress-fill ${isAllDone ? 'completed' : ''}`}
+              style={{ 
+                width: `${progressPercent}%`,
+                opacity: progressPercent > 0 ? 1 : 0
+              }}
+            />
+          </div>
+        )}
+
         {images.length === 0 ? (
-          <label className="upload-zone" style={{ borderStyle: 'dotted', background: 'transparent' }}>
-            <input type="file" multiple accept="image/*" onChange={handleFileUpload} style={{ display: 'none' }} />
+          <label 
+            className={`upload-zone ${isDragging ? 'dragging' : ''}`} 
+            style={{ borderStyle: 'dotted', background: 'transparent' }}
+            onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); }}
+            onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); }}
+            onDrop={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setIsDragging(false);
+              if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                handleFiles(e.dataTransfer.files);
+              }
+            }}
+          >
+            <input type="file" multiple accept="image/*,.eps,application/postscript,video/*,.mp4,.mov,.webm,.m4v" onChange={handleFileUpload} style={{ display: 'none' }} />
             <div style={{ background: 'rgba(236, 28, 36, 0.1)', padding: '2rem', borderRadius: '50%', marginBottom: '1rem' }}>
               <Upload size={48} color="#EC1C24" />
             </div>
-            <h2 style={{ fontSize: '1.5rem', fontWeight: '700', color: '#fff' }}>Drop images here or click to upload</h2>
-            <p style={{ marginTop: '0.5rem' }}>Bulk generation with {activeProvider === 'groq' ? 'Groq' : 'Gemini'}</p>
+            <h2 style={{ fontSize: '1.5rem', fontWeight: '700', color: '#fff' }}>Drop images, .EPS vectors, or videos here</h2>
+            <p style={{ marginTop: '0.5rem', color: 'var(--text-secondary)' }}>
+              Supports JPG, PNG, WEBP, .EPS vectors, and MP4/MOV/WEBM video footage
+            </p>
           </label>
         ) : (
           <div className="image-grid">
@@ -1110,14 +1945,50 @@ const App = () => {
                 {/* Left: Image Section */}
                 <div className="card-left">
                   <div className="card-image-box">
-                    <img src={img.preview} alt="Preview" className="card-img-main" onClick={() => setSelectedImage(img)} />
+                    {img.isExtractingPreview ? (
+                      <div className="eps-loading-overlay">
+                        <Loader2 className="animate-spin" size={24} color="#EC1C24" />
+                        <span>{img.isVideo ? 'Reading Video...' : 'Reading EPS...'}</span>
+                      </div>
+                    ) : img.preview ? (
+                      <>
+                        <img src={img.preview} alt="Preview" className="card-img-main" onClick={() => setSelectedImage(img)} />
+                        {img.isEps && (
+                          <span className={`eps-badge ${img.pairedWith ? 'paired' : ''}`} title={img.pairedWith ? `Paired with ${img.pairedWith}` : 'EPS Vector'}>
+                            {img.pairedWith ? `EPS + ${img.pairedType || 'JPG'}` : 'EPS Vector'}
+                          </span>
+                        )}
+                        {img.isVideo && (
+                          <span className="eps-badge video-badge" title={img.videoInfo ? `${img.videoInfo.formattedDuration} • ${img.videoInfo.resolutionLabel}` : 'Video'}>
+                            <Play size={10} style={{ fill: '#fff', stroke: '#fff' }} /> {img.videoInfo?.formattedDuration || 'VIDEO'}
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      <div className="no-preview-box">
+                        <FileText size={24} color="#EC1C24" />
+                        <span className="no-preview-text">No Preview Available</span>
+                        <label className="attach-preview-btn">
+                          <Paperclip size={12} /> Attach JPG
+                          <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => handleAttachPreview(img.id, e)} />
+                        </label>
+                      </div>
+                    )}
                     <button className="card-delete-btn" onClick={() => deleteImage(img.id)} title="Delete Image">
                       <Trash2 size={16} />
                     </button>
                   </div>
                   <div className="file-meta-info">
-                    <p className="file-name-label">{img.file.name}</p>
-                    <p className="file-size-label">Size: {formatFileSize(img.file.size)} → {img.metadata ? '11.9KB' : '...'}</p>
+                    <p className="file-name-label" title={img.file.name}>
+                      {img.file.name}
+                      {img.isEps && <span className="vector-mini-pill">VECTOR</span>}
+                      {img.isVideo && <span className="vector-mini-pill video-pill">VIDEO</span>}
+                    </p>
+                    <p className="file-size-label">
+                      Size: {formatFileSize(img.file.size)} 
+                      {img.pairedWith ? ' • Paired' : ''}
+                      {img.videoInfo ? ` • ${img.videoInfo.resolutionLabel}` : ''}
+                    </p>
                   </div>
                 </div>
 
@@ -1152,8 +2023,10 @@ const App = () => {
                     <div className="title-box-mockup">
                       {img.status === 'done' ? (
                         activeMode === 'metadata' ? img.metadata?.title : img.promptOutput
+                      ) : img.status === 'error' ? (
+                        <span style={{ color: '#ff6b70', fontWeight: '500' }}>⚠️ {img.error || 'Failed to generate metadata'}</span>
                       ) : (
-                        <span style={{ color: '#444' }}>{img.status === 'generating' ? 'Analyzing...' : 'Waiting for generation...'}</span>
+                        <span style={{ color: '#666' }}>{img.status === 'generating' ? 'Analyzing...' : 'Waiting for generation...'}</span>
                       )}
                     </div>
                   </div>
@@ -1198,10 +2071,10 @@ const App = () => {
               </div>
             ))}
             <label className="card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', borderStyle: 'dashed', minHeight: '300px', background: 'rgba(255,255,255,0.01)' }}>
-                <input type="file" multiple accept="image/*" onChange={handleFileUpload} style={{ display: 'none' }} />
+                <input type="file" multiple accept="image/*,.eps,application/postscript,video/*,.mp4,.mov,.webm,.m4v" onChange={handleFileUpload} style={{ display: 'none' }} />
                 <div style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
                     <Plus size={32} style={{ marginBottom: '0.5rem' }} />
-                    <p>Add Images</p>
+                    <p>Add Media</p>
                 </div>
             </label>
           </div>

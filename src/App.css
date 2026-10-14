@@ -206,6 +206,39 @@
   color: white;
 }
 
+/* Provider Status Buttons in Modal */
+.provider-status-btn {
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 0.45rem 1rem;
+  border-radius: 6px;
+  border: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  letter-spacing: 0.2px;
+  transition: all 0.2s ease;
+}
+
+.provider-status-btn.activate {
+  background: #ffffff;
+  color: #000000;
+  cursor: pointer;
+}
+
+.provider-status-btn.activate:hover {
+  background: #ebebeb;
+  transform: translateY(-1px);
+}
+
+.provider-status-btn.active {
+  background: #00e600;
+  color: #000000;
+  cursor: default;
+  box-shadow: 0 0 14px rgba(0, 230, 0, 0.4);
+}
+
 /* Stored Keys List */
 .stored-keys-container {
   display: flex;
@@ -240,6 +273,31 @@
 
 .key-actions .trash:hover {
   color: #EC1C24;
+}
+
+/* Overall Batch Generation Progress Bar */
+.overall-progress-track {
+  width: 100%;
+  height: 8px;
+  background: #161616;
+  border-radius: 9999px;
+  position: relative;
+  overflow: hidden;
+  margin-top: -0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.overall-progress-fill {
+  height: 100%;
+  border-radius: 9999px;
+  background-color: #EC1C24;
+  box-shadow: 0 0 10px rgba(236, 28, 36, 0.45);
+  transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.35s ease, box-shadow 0.35s ease, opacity 0.2s ease;
+}
+
+.overall-progress-fill.completed {
+  background-color: #2FEC00;
+  box-shadow: 0 0 12px rgba(47, 236, 0, 0.6);
 }
 
 /* Horizontal Card Layout */
@@ -697,19 +755,25 @@
 .api-provider-badge {
   display: inline-flex;
   align-items: center;
-  padding: 2px 8px;
+  justify-content: center;
+  padding: 3px 10px;
   border-radius: 6px;
-  font-size: 0.65rem;
+  font-size: 0.75rem;
   font-weight: 700;
   text-transform: capitalize;
   margin-left: auto;
+  background: rgba(0, 230, 0, 0.08);
+  color: #00e600;
+  border: 1px solid rgba(0, 230, 0, 0.5);
+  box-shadow: 0 0 10px rgba(0, 230, 0, 0.15);
+  transition: all 0.2s ease;
 }
 
 .badge-gemini,
 .badge-groq {
-  background: rgba(236, 28, 36, 0.15);
-  color: #EC1C24;
-  border: 1px solid rgba(236, 28, 36, 0.3);
+  background: rgba(0, 230, 0, 0.08);
+  color: #00e600;
+  border: 1px solid rgba(0, 230, 0, 0.5);
 }
 
 /* Google Login Button */
@@ -763,6 +827,29 @@
   font-size: 0.85rem;
   font-weight: 500;
   color: #fff;
+}
+
+.user-profile-bar.clickable {
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.user-profile-bar.clickable:hover {
+  background: rgba(236, 28, 36, 0.15);
+  border-color: rgba(236, 28, 36, 0.4);
+  transform: translateY(-1px);
+}
+
+.login-badge-subtle {
+  font-size: 0.7rem;
+  background: rgba(236, 28, 36, 0.2);
+  color: #EC1C24;
+  border: 1px solid rgba(236, 28, 36, 0.4);
+  padding: 2px 7px;
+  border-radius: 6px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .logout-btn-minimal {
@@ -893,6 +980,7 @@
 }
 
 .login-card {
+  position: relative;
   background: #2a2a2a;
   padding: 3rem;
   border-radius: 24px;
@@ -990,3 +1078,493 @@
   justify-content: center;
   margin-top: 1rem;
 }
+
+.login-email-btn {
+  width: 100%;
+  background: #EC1C24;
+  color: #ffffff;
+  border: none;
+  border-radius: 12px;
+  padding: 0.85rem 1rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 0.85rem;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.login-email-btn:hover {
+  background: #d01820;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(236, 28, 36, 0.35);
+}
+
+.login-email-btn:active {
+  transform: translateY(0);
+}
+
+.login-error-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: rgba(236, 28, 36, 0.12);
+  border: 1px solid rgba(236, 28, 36, 0.35);
+  color: #ff6b70;
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  margin-top: 1.25rem;
+  text-align: left;
+}
+
+.login-error-alert svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: #EC1C24;
+}
+
+/* Header Google Login Button */
+.header-google-login-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  backdrop-filter: blur(8px);
+}
+
+.header-google-login-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.3);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+}
+
+.admin-badge-mini {
+  font-size: 0.65rem;
+  font-weight: 700;
+  background: rgba(236, 28, 36, 0.2);
+  color: #EC1C24;
+  border: 1px solid rgba(236, 28, 36, 0.4);
+  padding: 1px 6px;
+  border-radius: 4px;
+  letter-spacing: 0.05em;
+}
+
+/* Quick Login Chip Section in Login Modal */
+.quick-login-options {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px dashed rgba(255, 255, 255, 0.1);
+  text-align: left;
+}
+
+.quick-login-label {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.quick-login-btns {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.quick-user-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #ddd;
+  padding: 5px 10px;
+  border-radius: 16px;
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.quick-user-chip:hover {
+  background: rgba(236, 28, 36, 0.15);
+  border-color: rgba(236, 28, 36, 0.4);
+  color: #fff;
+  transform: translateY(-1px);
+}
+
+.chip-avatar {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+}
+
+/* Sidebar Admin Section Box */
+.sidebar-admin-section {
+  background: rgba(236, 28, 36, 0.08);
+  border: 1px solid rgba(236, 28, 36, 0.28);
+  border-radius: 12px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sidebar-admin-section:hover {
+  background: rgba(236, 28, 36, 0.16);
+  border-color: #EC1C24;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(236, 28, 36, 0.2);
+}
+
+.admin-sidebar-badge {
+  background: rgba(236, 28, 36, 0.2);
+  color: #EC1C24;
+  border: 1px solid rgba(236, 28, 36, 0.35);
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 7px;
+  border-radius: 6px;
+}
+
+/* Action Bar Admin Trigger */
+.admin-header-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: rgba(236, 28, 36, 0.1);
+  border: 1px solid rgba(236, 28, 36, 0.35);
+  color: #ffffff;
+  padding: 0.55rem 0.95rem;
+  border-radius: 10px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.admin-header-trigger:hover {
+  background: rgba(236, 28, 36, 0.22);
+  border-color: #EC1C24;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(236, 28, 36, 0.35);
+}
+
+/* User Avatar Initials Fallback */
+.user-avatar-initials-small {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: rgba(236, 28, 36, 0.2);
+  border: 1px solid rgba(236, 28, 36, 0.4);
+  color: #EC1C24;
+  font-weight: 700;
+  font-size: 0.78rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* Discreet Admin Trigger for Normal Users */
+.sidebar-discreet-admin {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0.55rem 0.85rem;
+  border-radius: 9px;
+  color: var(--text-secondary, #9ca3af);
+  font-size: 0.76rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-bottom: 0.75rem;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.sidebar-discreet-admin:hover {
+  background: rgba(236, 28, 36, 0.08);
+  border-color: rgba(236, 28, 36, 0.25);
+  color: #ffffff;
+}
+
+/* Admin Auth Modal Overlay & Card */
+.admin-auth-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.82);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  padding: 1.5rem;
+  animation: adminFadeIn 0.2s ease-out;
+}
+
+.admin-auth-card {
+  background: #141416;
+  border: 1px solid rgba(236, 28, 36, 0.3);
+  border-radius: 18px;
+  width: 100%;
+  max-width: 440px;
+  padding: 1.75rem;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.8), 0 0 35px rgba(236, 28, 36, 0.12);
+  animation: adminSlideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.admin-auth-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.admin-auth-icon-wrap {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: rgba(236, 28, 36, 0.12);
+  border: 1px solid rgba(236, 28, 36, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.admin-auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.15rem;
+}
+
+.admin-auth-input-group label {
+  display: block;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text-secondary, #9ca3af);
+  margin-bottom: 0.45rem;
+}
+
+.admin-auth-input-group input {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+  color: #ffffff;
+  font-size: 0.95rem;
+  outline: none;
+  transition: all 0.2s;
+}
+
+.admin-auth-input-group input:focus {
+  border-color: #EC1C24;
+  background: rgba(255, 255, 255, 0.07);
+  box-shadow: 0 0 0 3px rgba(236, 28, 36, 0.15);
+}
+
+.admin-auth-error-alert {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(236, 28, 36, 0.12);
+  border: 1px solid rgba(236, 28, 36, 0.35);
+  color: #ff6b70;
+  padding: 0.65rem 0.95rem;
+  border-radius: 8px;
+  font-size: 0.82rem;
+}
+
+.admin-auth-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.admin-btn-secondary.danger {
+  color: #ff6b70;
+  border-color: rgba(236, 28, 36, 0.3);
+}
+
+.admin-btn-secondary.danger:hover {
+  background: rgba(236, 28, 36, 0.15);
+  color: #ffffff;
+}
+
+/* EPS Vector Support Styles */
+.upload-zone.dragging {
+  border-color: #EC1C24 !important;
+  background: rgba(236, 28, 36, 0.08) !important;
+  transform: scale(1.01);
+}
+
+.eps-loading-overlay {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  width: 100%;
+  gap: 8px;
+  background: rgba(18, 18, 20, 0.95);
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.eps-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  background: linear-gradient(135deg, #EC1C24 0%, #ff5252 100%);
+  color: #ffffff;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  padding: 3px 7px;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(236, 28, 36, 0.4);
+  z-index: 2;
+  pointer-events: none;
+}
+
+.eps-badge.paired {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.4);
+}
+
+.eps-badge.video-badge {
+  background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.4);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.vector-mini-pill {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 5px;
+  background: rgba(236, 28, 36, 0.15);
+  color: #EC1C24;
+  border: 1px solid rgba(236, 28, 36, 0.3);
+  border-radius: 4px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  vertical-align: middle;
+}
+
+.vector-mini-pill.video-pill {
+  background: rgba(37, 99, 235, 0.15);
+  color: #60a5fa;
+  border-color: rgba(37, 99, 235, 0.35);
+}
+
+.details-video-player {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 8px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  background: #000;
+  outline: none;
+}
+
+.no-preview-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  width: 100%;
+  padding: 12px;
+  background: rgba(25, 25, 28, 0.9);
+  text-align: center;
+  gap: 6px;
+}
+
+.no-preview-text {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.attach-preview-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-top: 4px;
+}
+
+.attach-preview-btn:hover {
+  background: #EC1C24;
+  border-color: #EC1C24;
+  color: #fff;
+  transform: translateY(-1px);
+}
+
+/* Save Settings Button in Sidebar */
+.save-settings-btn {
+  width: 100%;
+  margin-top: 1.5rem;
+  padding: 0.75rem 1rem;
+  background: #ffffff;
+  color: #000000;
+  border: none;
+  border-radius: 12px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.save-settings-btn:hover {
+  background: #f0f0f0;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(255, 255, 255, 0.1);
+}
+
+.save-settings-btn.saved {
+  background: #18181b;
+  color: #00e600;
+  border: 1px solid rgba(0, 230, 0, 0.5);
+  box-shadow: 0 0 12px rgba(0, 230, 0, 0.2);
+}
