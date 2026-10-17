@@ -327,7 +327,7 @@ const AdminPanel = ({ isOpen, onClose, currentUser, onAdminLogout }) => {
             onClick={() => setActiveTab('logs')}
           >
             <Clock size={17} />
-            <span>Generation Logs ({logs.length})</span>
+            <span>Activity Logs ({logs.length})</span>
           </button>
           <button 
             className={`admin-tab-btn ${activeTab === 'analytics' ? 'active' : ''}`}
@@ -547,7 +547,9 @@ const AdminPanel = ({ isOpen, onClose, currentUser, onAdminLogout }) => {
                       <div className="quick-log-action">{l.action}</div>
                       <div className="quick-log-bottom">
                         <span className={`provider-pill pill-${l.provider}`}>{l.provider}</span>
-                        <span className="quick-log-count">{l.count || 1} images</span>
+                        <span className="quick-log-count">
+                          {l.provider === 'auth' || l.mode === 'auth' ? 'Sign In' : `${l.count || 1} images`}
+                        </span>
                         <span className="quick-log-badge success">{l.status}</span>
                       </div>
                     </div>
@@ -764,7 +766,9 @@ const AdminPanel = ({ isOpen, onClose, currentUser, onAdminLogout }) => {
                             </div>
                           </td>
                           <td>
-                            <span className="count-number">{l.count || 1}</span>
+                            <span className="count-number">
+                              {l.provider === 'auth' || l.mode === 'auth' ? '—' : (l.count || 1)}
+                            </span>
                           </td>
                           <td>
                             <span className="time-secondary">{l.duration || '1.8s'}</span>
@@ -934,7 +938,7 @@ const AdminPanel = ({ isOpen, onClose, currentUser, onAdminLogout }) => {
                   <label>Database URL</label>
                   <input 
                     type="url" 
-                    placeholder="https://your-project-default-rtdb.firebaseio.com" 
+                    placeholder="https://gfx-matadata-default-rtdb.asia-southeast1.firebasedatabase.app" 
                     required 
                     value={dbUrlInput}
                     onChange={e => setDbUrlInput(e.target.value)}

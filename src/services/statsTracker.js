@@ -6,7 +6,7 @@ const STORAGE_KEYS = {
   FIREBASE_URL: 'gfx_firebase_db_url'
 };
 
-const DEFAULT_FIREBASE_URL = 'https://gfx-metadata-default-rtdb.firebaseio.com';
+const DEFAULT_FIREBASE_URL = 'https://gfx-matadata-default-rtdb.asia-southeast1.firebasedatabase.app';
 
 const INITIAL_ADMIN_USERS = [
   {
@@ -89,7 +89,15 @@ class StatsTracker {
   getFirebaseDbUrl() {
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.FIREBASE_URL);
-      if (saved && saved.trim()) return saved.trim().replace(/\/+$/, '');
+      if (saved && saved.trim()) {
+        const cleanSaved = saved.trim().replace(/\/+$/, '');
+        // Auto-migrate legacy non-functioning URL to the actual regional Firebase URL
+        if (cleanSaved.includes('gfx-metadata-default-rtdb.firebaseio.com')) {
+          localStorage.setItem(STORAGE_KEYS.FIREBASE_URL, DEFAULT_FIREBASE_URL);
+          return DEFAULT_FIREBASE_URL;
+        }
+        return cleanSaved;
+      }
       if (import.meta.env.VITE_FIREBASE_DB_URL) return import.meta.env.VITE_FIREBASE_DB_URL.trim().replace(/\/+$/, '');
     } catch {}
     return DEFAULT_FIREBASE_URL;
@@ -204,6 +212,31 @@ class StatsTracker {
     }
   }
 
+  // Non-destructive auth sync: updates profile and activity timestamp without resetting generation counters
+  async syncUserAuthToCloud(user) {
+    const baseUrl = this.getFirebaseDbUrl();
+    if (!baseUrl || !user?.email) return;
+    const safeKey = this.encodeKey(user.email);
+    try {
+      await fetch(`${baseUrl}/gfx_users/${safeKey}.json`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          avatar: user.avatar || null,
+          role: user.role,
+          status: user.status || 'active',
+          lastActive: user.lastActive || new Date().toISOString()
+        })
+      });
+      this.lastCloudSyncSuccess = true;
+    } catch (e) {
+      this.lastCloudSyncSuccess = false;
+    }
+  }
+
   async syncLogToCloud(logEntry) {
     const baseUrl = this.getFirebaseDbUrl();
     if (!baseUrl) return;
@@ -227,7 +260,7 @@ class StatsTracker {
     try {
       const [usersRes, logsRes] = await Promise.all([
         fetch(`${baseUrl}/gfx_users.json`, { cache: 'no-store' }),
-        fetch(`${baseUrl}/gfx_logs.json?orderBy="$key"&limitToLast=200`, { cache: 'no-store' })
+        fetch(`${baseUrl}/gfx_logs.json`, { cache: 'no-store' })
       ]);
 
       let cloudUsersList = [];
@@ -244,8 +277,9 @@ class StatsTracker {
         const logsObj = await logsRes.json();
         if (logsObj && typeof logsObj === 'object') {
           cloudLogsList = Object.values(logsObj);
-          // Sort logs newest first
+          // Sort logs newest first and keep up to 300
           cloudLogsList.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+          cloudLogsList = cloudLogsList.slice(0, 300);
         }
       }
 
@@ -254,10 +288,25 @@ class StatsTracker {
         const localUsers = this.getUsers();
         const mergedUsersMap = new Map();
 
-        localUsers.forEach(u => mergedUsersMap.set((u.email || '').toLowerCase(), u));
+        localUsers.forEach(u => {
+          if (u && u.email) mergedUsersMap.set(u.email.toLowerCase(), { ...u });
+        });
+
         cloudUsersList.forEach(u => {
           if (u && u.email) {
-            mergedUsersMap.set(u.email.toLowerCase(), u);
+            const emailKey = u.email.toLowerCase();
+            const existing = mergedUsersMap.get(emailKey);
+            if (existing) {
+              mergedUsersMap.set(emailKey, {
+                ...existing,
+                ...u,
+                totalImages: Math.max(Number(existing.totalImages) || 0, Number(u.totalImages) || 0),
+                totalGenerations: Math.max(Number(existing.totalGenerations) || 0, Number(u.totalGenerations) || 0),
+                lastActive: (new Date(existing.lastActive || 0) > new Date(u.lastActive || 0)) ? existing.lastActive : (u.lastActive || existing.lastActive)
+              });
+            } else {
+              mergedUsersMap.set(emailKey, u);
+            }
           }
         });
 
@@ -336,7 +385,7 @@ class StatsTracker {
         provider: 'auth',
         model: 'system',
         mode: 'auth',
-        count: 1,
+        count: 0,
         status: 'success',
         duration: '0.1s'
       };
@@ -346,7 +395,7 @@ class StatsTracker {
       this.saveLogs(logs);
 
       // Realtime Cloud Dispatch & Multi-Tab Broadcast
-      this.syncUserToCloud(targetUser);
+      this.syncUserAuthToCloud(targetUser);
       this.syncLogToCloud(logEntry);
       this.broadcastUpdate();
     } catch (e) {
@@ -458,10 +507,15 @@ class StatsTracker {
       return diffHours <= 24;
     }).length;
 
-    const totalImagesProcessed = users.reduce((acc, u) => acc + (u.totalImages || 0), 0);
-    const totalGenerations = users.reduce((acc, u) => acc + (u.totalGenerations || 0), 0);
+    const generationLogs = logs.filter(l => l.provider !== 'auth' && l.provider !== 'export' && l.mode !== 'auth' && l.action !== 'User Sign In');
+    const logsTotalImages = generationLogs.reduce((acc, l) => acc + (Number(l.count) || 1), 0);
+    const usersTotalImages = users.reduce((acc, u) => acc + (Number(u.totalImages) || 0), 0);
+    const totalImagesProcessed = Math.max(usersTotalImages, logsTotalImages);
 
-    const generationLogs = logs.filter(l => l.provider !== 'auth' && l.provider !== 'export');
+    const logsTotalGenerations = generationLogs.length;
+    const usersTotalGenerations = users.reduce((acc, u) => acc + (Number(u.totalGenerations) || 0), 0);
+    const totalGenerations = Math.max(usersTotalGenerations, logsTotalGenerations);
+
     const successLogs = generationLogs.filter(l => l.status === 'success');
     const successRate = generationLogs.length > 0 
       ? Math.round((successLogs.length / generationLogs.length) * 100) 
